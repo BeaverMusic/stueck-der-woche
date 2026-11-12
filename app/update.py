@@ -200,12 +200,15 @@ def install() -> dict:
             raise
         if kind == "mac":
             _update_mac_bundle(src, info["latest"])
+    # Erst jetzt (Zwischenordner ist weg) eine frühere Signatur entfernen
+    if kind == "mac":
+        _remove_signature(APP_DIR.parent.parent.parent)
     storage.log("Update", f"Version {VERSION} → {info['latest']} installiert")
     return {"version": info["latest"]}
 
 
 def _update_mac_bundle(src: Path, version: str) -> None:
-    """Startprogramm und Versionsangabe der Mac-App mitziehen, App neu signieren."""
+    """Startprogramm und Versionsangabe der Mac-App mitziehen."""
     contents = APP_DIR.parent.parent
     launcher = src / "paket" / "mac" / "StueckDerWoche"
     if launcher.is_file():
@@ -215,13 +218,26 @@ def _update_mac_bundle(src: Path, version: str) -> None:
     plist = contents / "Info.plist"
     try:
         info = plistlib.loads(plist.read_bytes())
-        info["CFBundleShortVersionString"] = info["CFBundleVersion"] = version
+        nums = ([int(x) for x in re.findall(r"\d+", version)] + [0, 0, 0, 0])[:4]
+        info["CFBundleShortVersionString"] = version
+        info["CFBundleVersion"] = f"{nums[0]}.{nums[1]}.{nums[2] * 1000 + nums[3]}"  # wie build_dmg.bundle_version
         plist.write_bytes(plistlib.dumps(info))
     except Exception:
         pass
-    if shutil.which("codesign"):
-        subprocess.run(["codesign", "--force", "--deep", "--sign", "-", str(contents.parent)],
-                       capture_output=True, timeout=120)
+
+
+def _remove_signature(app: Path) -> None:
+    """Die App wird nicht signiert: Eine lokale Signatur passt nach jedem Update nicht mehr
+    zum Inhalt und kann den Start verhindern. Eine Signatur früherer Versionen entfernen."""
+    sig = app / "Contents" / "_CodeSignature"
+    if not sig.exists():
+        return
+    try:
+        if shutil.which("codesign"):
+            subprocess.run(["codesign", "--remove-signature", str(app)], capture_output=True, timeout=60)
+    except Exception:
+        pass
+    shutil.rmtree(sig, ignore_errors=True)
 
 
 def restart(own_window: bool) -> None:

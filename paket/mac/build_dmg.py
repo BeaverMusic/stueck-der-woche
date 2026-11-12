@@ -76,6 +76,15 @@ def make_icns(png: Path) -> bytes:
     return b"icns" + struct.pack(">I", len(chunks) + 8) + chunks
 
 
+def bundle_version(version: str) -> str:
+    """Interne Versionsnummer für macOS: höchstens drei Zahlen, weiterhin aufsteigend
+    (0.6 → 0.6, 0.6.0.1 → 0.6.1, 0.6.1 → 0.6.1000, 0.6.1.2 → 0.6.1002)."""
+    import re
+    nums = [int(x) for x in re.findall(r"\d+", version)] or [0]
+    nums = (nums + [0, 0, 0, 0])[:4]
+    return f"{nums[0]}.{nums[1]}.{nums[2] * 1000 + nums[3]}"
+
+
 def build_app(target: Path) -> Path:
     app = target / f"{APP_NAME}.app"
     contents = app / "Contents"
@@ -100,7 +109,7 @@ def build_app(target: Path) -> Path:
         "CFBundleIconFile": "StueckDerWoche",
         "CFBundlePackageType": "APPL",
         "CFBundleShortVersionString": VERSION,
-        "CFBundleVersion": VERSION,
+        "CFBundleVersion": bundle_version(VERSION),
         "CFBundleDevelopmentRegion": "de",
         "LSMinimumSystemVersion": "11.0",
         "LSApplicationCategoryType": "public.app-category.education",

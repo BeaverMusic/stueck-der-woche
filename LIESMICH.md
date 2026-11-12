@@ -3,7 +3,7 @@
 Erstellt Übersichtsblätter (DIN A5) für den Musikunterricht: Titel, Angaben,
 Porträt, Infotext sowie Codes für YouTube, Spotify und Apple Music.
 
-Stand: **Version 0.6.0.1** – alle Etappen fertig: Editor, Live-Vorschau, Speichern,
+Stand: **Version 0.6.1** – alle Etappen fertig: Editor, Live-Vorschau, Speichern,
 PDF-Export, Angaben und Porträts aus Wikipedia/Wikidata/Commons, Aufnahmen von
 YouTube, Spotify und Apple Music, Infotext-Vorschläge per KI (Claude-Abo,
 Claude-API oder andere – auch kostenlose – Dienste), Schriften und Gestaltung
@@ -30,7 +30,7 @@ Für den automatischen PDF-Export nutzt sie einen unsichtbaren Chromium:
 
 ### macOS – mit dem Installationsabbild (ohne Terminal)
 
-1. **„Stueck-der-Woche-0.6.0.1.dmg“** (unter github.com/BeaverMusic/stueck-der-woche → Releases) doppelklicken. Es öffnet sich ein Fenster mit
+1. **„Stueck-der-Woche-0.6.1.dmg“** (unter github.com/BeaverMusic/stueck-der-woche → Releases) doppelklicken. Es öffnet sich ein Fenster mit
    der App, einer Verknüpfung „Programme“ und einer kurzen Anleitung.
 2. **„Stück der Woche“ doppelklicken.** Die App bietet an, sich selbst in den
    Ordner „Programme“ zu kopieren, und startet danach von dort.

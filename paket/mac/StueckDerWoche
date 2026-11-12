@@ -55,17 +55,22 @@ EOF
 }
 
 # Bei macOS anmelden, damit Finder, Launchpad und Spotlight (Cmd+Leertaste) die App
-# kennen: lokal signieren („ad hoc“, ohne Apple-Konto), registrieren, indizieren.
+# kennen: registrieren und indizieren. Die App wird bewusst NICHT signiert – eine
+# lokale Signatur wird durch jedes Update ungültig und kann den Start verhindern.
 register_app() {
   local app="$1"
-  if ! /usr/bin/codesign --verify "$app" >/dev/null 2>&1; then
-    /usr/bin/codesign --force --deep --sign - "$app" >> "$LOG" 2>&1 || say "codesign fehlgeschlagen"
+  # Frühere Versionen (0.6 und älter) haben sich signiert: diese Signatur entfernen
+  if [ -d "$app/Contents/_CodeSignature" ]; then
+    /usr/bin/codesign --remove-signature "$app" >> "$LOG" 2>&1 || rm -rf "$app/Contents/_CodeSignature"
+    say "Alte Signatur entfernt: $app"
   fi
   local lsreg=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
   [ -x "$lsreg" ] && "$lsreg" -f -R "$app" >/dev/null 2>&1
   /usr/bin/mdimport -i "$app" >/dev/null 2>&1 || /usr/bin/mdimport "$app" >/dev/null 2>&1
   say "Bei macOS angemeldet: $app"
 }
+
+say "Start aus $HERE (Version $(/usr/bin/defaults read "$HERE/Contents/Info" CFBundleShortVersionString 2>/dev/null))"
 
 # ------------------------------------------------------------ 1. In „Programme“ kopieren
 case "$HERE" in
@@ -96,7 +101,7 @@ Deine Blätter und Einstellungen bleiben bei einem Update erhalten." "Abbrechen"
         say "In Programme installiert: $TARGET"
         # Anmelden, solange die neue App noch nicht läuft (nicht erst beim Start)
         register_app "$TARGET"
-        echo "$(/usr/bin/defaults read "$TARGET/Contents/Info" CFBundleVersion 2>/dev/null) $TARGET" > "$SUPPORT/angemeldet"
+        echo "$(/usr/bin/defaults read "$TARGET/Contents/Info" CFBundleShortVersionString 2>/dev/null) $TARGET" > "$SUPPORT/angemeldet"
         # Abbild auswerfen (gelingt nur, wenn es nicht mehr benutzt wird)
         VOL="$(echo "$SRC_APP" | sed -n 's|^\(/Volumes/[^/]*\)/.*|\1|p')"
         [ -n "$VOL" ] && (sleep 3; /usr/sbin/diskutil eject "$VOL" >/dev/null 2>&1) &
@@ -112,7 +117,7 @@ esac
 
 # Einmal je Version und Ort anmelden (auch für bereits installierte Apps)
 MARK="$SUPPORT/angemeldet"
-STAMP="$(/usr/bin/defaults read "$HERE/Contents/Info" CFBundleVersion 2>/dev/null) $HERE"
+STAMP="$(/usr/bin/defaults read "$HERE/Contents/Info" CFBundleShortVersionString 2>/dev/null) $HERE"
 if [ "$(cat "$MARK" 2>/dev/null)" != "$STAMP" ]; then
   # Nicht während macOS die App gerade startet (das kann die Meldung „ist nicht mehr
   # geöffnet“ auslösen), sondern etwas später im Hintergrund.
@@ -180,6 +185,7 @@ fi
 
 # ------------------------------------------------------------ 3. App starten
 cd "$PROG" || { alert "Die App ist unvollständig. Bitte neu installieren."; exit 1; }
-# Zwischendateien von Python nicht in die (signierte) App schreiben
+# Zwischendateien von Python nicht in die App schreiben
 export PYTHONPYCACHEPREFIX="$SUPPORT/pycache"
+say "Starte Python: $PY"
 exec "$PY" stueck_der_woche.py >> "$LOG" 2>&1

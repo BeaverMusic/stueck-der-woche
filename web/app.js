@@ -2,7 +2,7 @@
 (function () {
   "use strict";
 
-  const APP_VERSION = "0.6.0.1"; // muss zu app/__init__.py passen
+  const APP_VERSION = "0.6.1"; // muss zu app/__init__.py passen
   const { GENRES, ACCENTS, newSheet, esc } = window.Sheet;
   const $ = (sel, root = document) => root.querySelector(sel);
 

@@ -1,5 +1,10 @@
 # Neuerungen
 
+## 0.6.1
+- Mac: Die App startet nach einem Update wieder zuverlässig. Sie signiert sich nicht mehr selbst (eine solche Signatur passte nach Updates nicht mehr zum Inhalt); eine alte Signatur entfernt sie beim Start automatisch.
+- Mac: genaueres Startprotokoll in `ausgabe.txt`.
+- Hinweis: Wer 0.6.0.1 oder älter installiert hat, installiert 0.6.1 bitte einmal über das .dmg – danach funktionieren Updates wieder über den Knopf in der App.
+
 ## 0.6.0.1
 - Das **+** zum Anlegen eines neuen Typs im Dialog „Neues Blatt“ ist jetzt umrandet und dadurch besser zu erkennen.
 

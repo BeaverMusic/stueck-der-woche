@@ -262,7 +262,10 @@ EOF
     rm -rf "$OLD_APP" && echo "Alte Version aus Benutzerordner → Programme entfernt."
   fi
   # Bei macOS anmelden, damit Finder und Spotlight (Cmd+Leertaste) die App sofort kennen
-  codesign --force --deep --sign - "$APP" >/dev/null 2>&1 || true   # lokal signieren (ohne Apple-Konto)
+  # Nicht signieren (eine lokale Signatur passt nach Updates nicht mehr); alte entfernen
+  if [ -d "$APP/Contents/_CodeSignature" ]; then
+    codesign --remove-signature "$APP" >/dev/null 2>&1 || rm -rf "$APP/Contents/_CodeSignature"
+  fi
   LSREG=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
   [ -x "$LSREG" ] && "$LSREG" -f -R "$APP" >/dev/null 2>&1 || true
   { mdimport -i "$APP" || mdimport "$APP"; } >/dev/null 2>&1 || true
