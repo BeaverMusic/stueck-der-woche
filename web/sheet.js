@@ -146,6 +146,25 @@
   // Ausgangslage des Bildausschnitts (Mitte, eher oben – wo bei Porträts das Gesicht ist)
   const IMAGE_DEFAULTS = { x: 50, y: 25, zoom: 1 };
 
+  // Eingebaute Arten sind ihre eigene Grundlage
+  for (const [k, g] of Object.entries(GENRES)) g.base = k;
+  // Weitere Farben für eigene Arten
+  const EXTRA_ACCENTS = ["#6B3FA0", "#0F6E78", "#B3541E", "#7A1F4F", "#4A5B2A"];
+
+  /* Eigene Arten (aus den Einstellungen) zu den eingebauten hinzufügen. */
+  function setCustomKinds(list) {
+    for (const k of Object.keys(GENRES)) if (GENRES[k].custom) delete GENRES[k];
+    for (const c of Array.isArray(list) ? list : []) {
+      if (!c || !/^k-[a-z0-9-]+$/.test(c.key) || GENRES[c.key]) continue;
+      GENRES[c.key] = { label: String(c.label || "Eigene Art"), accent: safeColor(c.accent),
+        fields: (c.fields || []).map((f) => [String(f[0]), !!f[1]]), base: c.base in GENRES ? c.base : "sonstiges", custom: true };
+    }
+  }
+
+  function baseKind(kind) {
+    return (GENRES[kind] && GENRES[kind].base) || "sonstiges";
+  }
+
   function newSheet(kind) {
     const g = GENRES[kind] || GENRES.klassik;
     return {
@@ -374,6 +393,6 @@ ${creditHtml}
     return Promise.all([fonts, ...loads]);
   }
 
-  window.Sheet = { GENRES, ACCENTS, IMAGE_DEFAULTS, FONTS, DESIGN_DEFAULTS, SIZE_LIMITS, design, loadFonts,
+  window.Sheet = { GENRES, ACCENTS, EXTRA_ACCENTS, setCustomKinds, baseKind, IMAGE_DEFAULTS, FONTS, DESIGN_DEFAULTS, SIZE_LIMITS, design, loadFonts,
     newSheet, render, overflows, whenReady, fitTitles, esc };
 })();

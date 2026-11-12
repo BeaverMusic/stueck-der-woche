@@ -3,7 +3,7 @@
 Erstellt Übersichtsblätter (DIN A5) für den Musikunterricht: Titel, Angaben,
 Porträt, Infotext sowie Codes für YouTube, Spotify und Apple Music.
 
-Stand: **Version 6.6** – alle Etappen fertig: Editor, Live-Vorschau, Speichern,
+Stand: **Version 6.7** – alle Etappen fertig: Editor, Live-Vorschau, Speichern,
 PDF-Export, Angaben und Porträts aus Wikipedia/Wikidata/Commons, Aufnahmen von
 YouTube, Spotify und Apple Music, Infotext-Vorschläge per KI (Claude-Abo,
 Claude-API oder andere – auch kostenlose – Dienste), Schriften und Gestaltung
@@ -30,7 +30,7 @@ Für den automatischen PDF-Export nutzt sie einen unsichtbaren Chromium:
 
 ### macOS – mit dem Installationsabbild (ohne Terminal)
 
-1. **„Stueck-der-Woche-6.6.dmg“** (unter github.com/BeaverMusic/stueck-der-woche → Releases) doppelklicken. Es öffnet sich ein Fenster mit
+1. **„Stueck-der-Woche-6.7.dmg“** (unter github.com/BeaverMusic/stueck-der-woche → Releases) doppelklicken. Es öffnet sich ein Fenster mit
    der App, einer Verknüpfung „Programme“ und einer kurzen Anleitung.
 2. **„Stück der Woche“ doppelklicken.** Die App bietet an, sich selbst in den
    Ordner „Programme“ zu kopieren, und startet danach von dort.
@@ -369,7 +369,7 @@ Zum Sichern einfach diesen Ordner kopieren.
 
 ## Einstellungen
 
-Das Zahnrad oben rechts öffnet die Einstellungen mit sechs Reitern:
+Das Zahnrad oben rechts öffnet die Einstellungen mit sieben Reitern:
 
 - **Allgemein:** Kopfzeile (z. B. „Musik · Name“), Ordner für Blätter und PDFs –
   jeweils mit **Auswählen …** (öffnet den Finder bzw. Dateimanager) und
@@ -383,7 +383,11 @@ Das Zahnrad oben rechts öffnet die Einstellungen mit sechs Reitern:
   (Apple Music braucht keinen Schlüssel)
 - **KI-Anbindung:** Anbieter, Modell, Schlüssel, Aufgabe für die KI
   (das Zahnrad ⚙ neben „Text vorschlagen“ öffnet direkt diesen Reiter)
-- **Hilfe & Fehler:** Version, Fehlerprotokoll, Verbindungen prüfen
+- **Arten:** eigene Arten von Stücken anlegen (z. B. „Filmmusik“) – mit Name,
+  Farbe, eigenen Angaben und der Wahl, ob sie sich wie Klassik, Pop/Rock, Jazz
+  oder Sonstiges verhalten soll (für Wikipedia-Suche und Aufnahmeauswahl).
+  Auch direkt erreichbar über „+ Neues Blatt“ → „+ Eigene Art …“.
+- **Hilfe & Fehler:** Version, Fehlerprotokoll, Verbindungen prüfen, Updates
 
 **Speichern** übernimmt die Einstellungen und lässt das Fenster offen.
 **Schließen** (oder Esc) schließt es; gibt es noch nicht gespeicherte

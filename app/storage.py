@@ -70,6 +70,7 @@ DEFAULT_SETTINGS = {
     "gemini_key": "",
     "gemini_model": "",
     "apple_shortcut": "",
+    "custom_kinds": "[]",  # eigene Arten von Stücken (JSON, siehe _clean_kinds)
     "update_auto": "1",  # beim Start nach neuen Versionen auf GitHub schauen
     "update_repo": "",  # anderes GitHub-Repository („Konto/Name“), leer = Standard  # Name des Kurzbefehls für Apple Intelligence (leer = „Stück der Woche KI“)  # "claude_code" | "anthropic" | "openai" (leer = automatisch)
     "claude_model": "",  # für Claude Code, leer = Standard
@@ -99,8 +100,69 @@ BODY_FONTS = {"DM Sans", "Source Sans 3", "Open Sans", "Lato", "Nunito", "Atkins
 SIZE_LIMITS = {"size_title": (16, 40), "size_fields": (7, 13), "size_info": (7, 13)}
 
 
+BASE_KINDS = ("klassik", "pop", "jazz", "sonstiges")
+
+
+def _clean_kinds(value: str) -> str:
+    """Eigene Arten prüfen: feste Schlüssel, kurze Texte, gültige Farbe, bekannte Grundlage."""
+    try:
+        data = json.loads(value or "[]")
+    except ValueError:
+        return "[]"
+    out, seen = [], set()
+    for item in data[:20] if isinstance(data, list) else []:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("key", ""))
+        label = " ".join(str(item.get("label", "")).split())[:40]
+        if not re.fullmatch(r"k-[a-z0-9-]{1,48}", key) or key in seen or not label:
+            continue
+        accent = str(item.get("accent", ""))
+        if not re.fullmatch(r"#[0-9a-fA-F]{6}", accent):
+            accent = "#1F3A5F"
+        base = item.get("base") if item.get("base") in BASE_KINDS else "sonstiges"
+        fields = []
+        for f in item.get("fields", [])[:12] if isinstance(item.get("fields"), list) else []:
+            if isinstance(f, (list, tuple)) and f:
+                name, wide = f[0], (f[1] if len(f) > 1 else False)
+            elif isinstance(f, dict):
+                name, wide = f.get("label", ""), f.get("wide", False)
+            else:
+                continue
+            name = " ".join(str(name).split())[:30]
+            if name:
+                fields.append([name, bool(wide)])
+        out.append({"key": key, "label": label, "accent": accent, "base": base,
+                    "fields": fields or [["Künstler:in", True]]})
+        seen.add(key)
+    return json.dumps(out, ensure_ascii=False)
+
+
+def custom_kinds() -> list:
+    try:
+        return json.loads(load_settings().get("custom_kinds") or "[]")
+    except ValueError:
+        return []
+
+
+def base_kind(kind: str) -> str:
+    """Eigene Arten verhalten sich wie eine der eingebauten (für Suche und Aufnahmen)."""
+    if kind in BASE_KINDS:
+        return kind
+    return next((k["base"] for k in custom_kinds() if k.get("key") == kind), "sonstiges")
+
+
+def kind_label(kind: str) -> str:
+    labels = {"klassik": "Klassik", "pop": "Pop/Rock", "jazz": "Jazz", "sonstiges": "Sonstiges"}
+    if kind in labels:
+        return labels[kind]
+    return next((k["label"] for k in custom_kinds() if k.get("key") == kind), "Sonstiges")
+
+
 def _clean_setting(key: str, value: str) -> str:
     """Prüft Gestaltungswerte – sie landen später im Blatt, daher nur Bekanntes zulassen."""
+    if key == "custom_kinds":
+        return _clean_kinds(value)
     if key == "font_head":
         return value if value in HEAD_FONTS else ""
     if key in ("font_body", "font_info"):

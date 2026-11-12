@@ -186,12 +186,12 @@ class Handler(BaseHTTPRequestHandler):
                 name = storage.save_image(m.group(1), ext, base64.b64decode(dm.group(2)))
                 return self._json({"file": name})
             if path == "/api/lookup/search":
-                return self._json(wiki.search(str(body.get("q", "")), str(body.get("kind", ""))))
+                return self._json(wiki.search(str(body.get("q", "")), storage.base_kind(str(body.get("kind", "")))))
             if path == "/api/ai/infotext":
                 sheet = storage.load_sheet(str(body.get("id", "")))
                 chosen = (sheet.get("lookup") or {}).get("chosen") or ""
                 try:
-                    sources = wiki.context(chosen, sheet.get("kind", "")) if chosen else ""
+                    sources = wiki.context(chosen, storage.base_kind(sheet.get("kind", ""))) if chosen else ""
                 except wiki.LookupError_:
                     sources = ""
                 result = ai.generate(sheet, sources, str(body.get("wish", "")).strip(),
@@ -263,7 +263,7 @@ class Handler(BaseHTTPRequestHandler):
                 storage.log("Oberfläche", str(body.get("message", ""))[:4000])
                 return self._json({"ok": True})
             if path == "/api/lookup/suggest":
-                return self._json(wiki.suggest(str(body.get("id", "")), str(body.get("kind", ""))))
+                return self._json(wiki.suggest(str(body.get("id", "")), storage.base_kind(str(body.get("kind", "")))))
             m = re.fullmatch(r"/api/sheets/([a-z0-9-]+)/image-url", path)
             if m:
                 data, ext = wiki.fetch_image(str(body.get("url", "")), str(body.get("original", "")))

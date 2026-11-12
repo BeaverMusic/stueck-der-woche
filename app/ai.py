@@ -92,7 +92,6 @@ class AIError(RuntimeError):
 
 def build_prompt(sheet: dict, sources: str, wish: str, previous: str) -> str:
     template = storage.load_settings().get("ai_prompt", "").strip() or DEFAULT_PROMPT
-    kinds = {"klassik": "Klassik", "pop": "Pop/Rock", "jazz": "Jazz", "sonstiges": "Sonstiges"}
     title = " – ".join(x for x in [sheet.get("title", ""), sheet.get("subtitle", "")] if x)
     fields = "\n".join(f"- {f.get('label')}: {f.get('value')}" for f in sheet.get("fields", [])
                        if f.get("value") and f.get("show", True)) or "- (keine)"
@@ -103,7 +102,7 @@ def build_prompt(sheet: dict, sources: str, wish: str, previous: str) -> str:
         wish_text = f"Besonderer Wunsch: {wish}"
     elif previous:
         wish_text = "Schreibe eine neue, eigenständige Fassung (nicht den bisherigen Text umformulieren)."
-    values = {"TITEL": title or "(ohne Titel)", "ART": kinds.get(sheet.get("kind"), ""),
+    values = {"TITEL": title or "(ohne Titel)", "ART": storage.kind_label(str(sheet.get("kind", ""))),
               "ANGABEN": fields, "QUELLEN": sources or "(keine Quellen gefunden – nur gesichertes Wissen verwenden)",
               "WUNSCH": wish_text}
     # nur bekannte Platzhalter ersetzen (geschweifte Klammern im JSON-Beispiel bleiben)

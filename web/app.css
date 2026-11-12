@@ -361,3 +361,12 @@ body.app-offline .status { font-weight: 600; }
 .update-notes { white-space: pre-wrap; max-height: 220px; overflow: auto; font-size: 13.5px; padding: 10px 12px;
   border-radius: 8px; background: rgba(0, 0, 0, 0.04); margin: 8px 0 12px; }
 label.check { display: flex; align-items: center; gap: 8px; font-size: 14px; margin: 6px 0; }
+
+/* Eigene Arten */
+.kind-list { list-style: none; margin: 8px 0; padding: 0; }
+.kind-list li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 4px; border-bottom: 1px solid rgba(0, 0, 0, 0.07); }
+.kind-list li.builtin { opacity: 0.75; }
+.kind-list .dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+.kind-list .kind-btns { margin-left: auto; display: flex; gap: 6px; }
+.kind-form textarea { width: 100%; font: inherit; }
+#kf-swatches { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
