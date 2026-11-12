@@ -1,5 +1,8 @@
 # Neuerungen
 
+## 0.6.1.1
+- Eigene Typen lassen sich nachträglich ändern: Im Dialog „+ Neues Blatt“ auf den farbigen Punkt eines eigenen Typs klicken – eine neue Farbe wird sofort übernommen, der Name mit „Fertig“. Bestehende Blätter behalten ihre Farbe.
+
 ## 0.6.1
 - Mac: Die App startet nach einem Update wieder zuverlässig. Sie signiert sich nicht mehr selbst (eine solche Signatur passte nach Updates nicht mehr zum Inhalt); eine alte Signatur entfernt sie beim Start automatisch.
 - Mac: genaueres Startprotokoll in `ausgabe.txt`.

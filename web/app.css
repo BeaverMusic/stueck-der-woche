@@ -365,6 +365,13 @@ label.check { display: flex; align-items: center; gap: 8px; font-size: 14px; mar
 /* Eigene Typen im Dialog „Neues Blatt“ */
 .type-tile { position: relative; display: flex; }
 .type-tile > .btn { flex: 1; justify-content: flex-start; min-height: 44px; }
+.type-tile.custom > .btn { padding-left: 34px; }
+.genre-grid .type-color { position: absolute; left: 11px; top: calc(50% - 8px); width: 16px; height: 16px; margin: 0; padding: 0;
+  min-width: 16px; min-height: 16px; max-height: 16px; box-sizing: border-box; appearance: none; line-height: 0;
+  border-radius: 50%; border: 2px solid transparent; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15); cursor: pointer; z-index: 1;
+  transition: transform 0.12s; }
+.genre-grid .type-color:hover, .genre-grid .type-color:focus-visible { transform: scale(1.25); }
+.type-tile.editing > .btn { border-color: var(--text); }
 .type-del { position: absolute; top: -7px; right: -7px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
   border: 1px solid var(--line, #ddd); background: var(--bg, #fff); color: var(--muted, #666); font-size: 14px; line-height: 1;
   cursor: pointer; opacity: 0; transition: opacity 0.15s; }

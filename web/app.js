@@ -2,7 +2,7 @@
 (function () {
   "use strict";
 
-  const APP_VERSION = "0.6.1"; // muss zu app/__init__.py passen
+  const APP_VERSION = "0.6.1.1"; // muss zu app/__init__.py passen
   const { GENRES, ACCENTS, newSheet, esc } = window.Sheet;
   const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -248,6 +248,7 @@
       (dlg, close) => {
         const grid = $("#type-grid", dlg), form = $("#type-form", dlg), msg = $("#tf-msg", dlg);
         let color = Sheet.EXTRA_ACCENTS[0];
+        let editing = null; // Schlüssel des Typs, der gerade bearbeitet wird (null = neuer Typ)
         const customs = () => parseKinds(state.settings.custom_kinds);
         const saveTypes = async (list) => {
           state.settings = await post("/api/settings", { custom_kinds: JSON.stringify(list) });
@@ -255,10 +256,13 @@
         };
         const render = () => {
           grid.innerHTML = Object.entries(GENRES).map(([k, g]) =>
-            `<div class="type-tile"><button type="button" class="btn" data-k="${esc(k)}"><span class="dot" style="background:${esc(g.accent)}"></span>${esc(g.label)}</button>${
+            `<div class="type-tile${g.custom ? " custom" : ""}${editing === k ? " editing" : ""}">${g.custom
+              ? `<button type="button" class="type-color" data-edit="${esc(k)}" style="background:${esc(g.accent)}" title="Farbe und Name ändern" aria-label="Farbe und Name von „${esc(g.label)}“ ändern"></button>`
+              : ""}<button type="button" class="btn" data-k="${esc(k)}">${g.custom ? "" : `<span class="dot" style="background:${esc(g.accent)}"></span>`}${esc(g.label)}</button>${
               g.custom ? `<button type="button" class="type-del" data-del="${esc(k)}" title="Typ „${esc(g.label)}“ entfernen" aria-label="Typ „${esc(g.label)}“ entfernen">×</button>` : ""}</div>`).join("")
             + `<button type="button" class="btn btn-ghost type-add" id="type-add" title="Neuen Typ anlegen" aria-label="Neuen Typ anlegen">+</button>`;
           grid.querySelectorAll("[data-k]").forEach((b) => (b.onclick = () => close(b.dataset.k)));
+          grid.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => openForm(b.dataset.edit)));
           grid.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
             const key = b.dataset.del, n = state.list.filter((x) => x.kind === key).length;
             if (b.dataset.sure !== "1") { // erst nachfragen
@@ -281,26 +285,67 @@
             b.setAttribute("aria-pressed", String(b.dataset.c.toLowerCase() === color.toLowerCase())));
           $("#tf-color", dlg).value = color;
         };
-        const openForm = () => {
-          const used = Object.values(GENRES).map((g) => g.accent.toLowerCase());
-          color = Sheet.EXTRA_ACCENTS.find((c) => !used.includes(c.toLowerCase())) || Sheet.EXTRA_ACCENTS[0];
+        const openForm = (key) => {
+          editing = typeof key === "string" ? key : null;
+          const t = editing && GENRES[editing];
+          if (t) {
+            color = t.accent;
+          } else {
+            const used = Object.values(GENRES).map((g) => g.accent.toLowerCase());
+            color = Sheet.EXTRA_ACCENTS.find((c) => !used.includes(c.toLowerCase())) || Sheet.EXTRA_ACCENTS[0];
+          }
           syncColor();
-          $("#tf-name", dlg).value = "";
-          msg.textContent = "";
+          $("#tf-name", dlg).value = t ? t.label : "";
+          $("#tf-ok", dlg).textContent = t ? "Fertig" : "Anlegen";
+          $("#tf-cancel", dlg).hidden = !!t; // beim Bearbeiten ist alles sofort gespeichert
+          msg.textContent = t ? "Ein Klick auf eine Farbe übernimmt sie sofort." : "";
+          msg.style.color = "";
           form.hidden = false;
+          render();
           $("#type-add", dlg).hidden = true;
-          $("#tf-name", dlg).focus();
+          if (!t) $("#tf-name", dlg).focus();
         };
-        const closeForm = () => { form.hidden = true; $("#type-add", dlg).hidden = false; };
-        dlg.querySelectorAll("#tf-swatches .swatch").forEach((b) => (b.onclick = () => { color = b.dataset.c; syncColor(); }));
-        $("#tf-color", dlg).oninput = (e) => { color = e.target.value; syncColor(); };
+        const closeForm = () => { form.hidden = true; editing = null; render(); };
+        // Bearbeiten: Farbe sofort speichern
+        const saveEdit = async (changes) => {
+          const list = customs().map((x) => (x.key === editing ? { ...x, ...changes } : x));
+          await saveTypes(list);
+          render();
+          $("#type-add", dlg).hidden = true;
+        };
+        const pickColor = async (c) => {
+          color = c;
+          syncColor();
+          if (!editing) return;
+          try {
+            await saveEdit({ accent: c });
+            msg.style.color = "var(--ok)";
+            msg.textContent = "✓ Farbe geändert";
+          } catch (e) { msg.style.color = "var(--danger)"; msg.textContent = e.message; }
+        };
+        let colorTimer = 0;
+        dlg.querySelectorAll("#tf-swatches .swatch").forEach((b) => (b.onclick = () => pickColor(b.dataset.c)));
+        $("#tf-color", dlg).oninput = (e) => { // Farbwähler: erst speichern, wenn er zur Ruhe kommt
+          color = e.target.value;
+          syncColor();
+          clearTimeout(colorTimer);
+          colorTimer = setTimeout(() => pickColor(color), 400);
+        };
         $("#tf-cancel", dlg).onclick = closeForm;
         const create = async () => {
           const label = $("#tf-name", dlg).value.replace(/\s+/g, " ").trim();
           msg.style.color = "var(--danger)";
           if (!label) { msg.textContent = "Bitte einen Namen eintragen."; return; }
-          if (Object.values(GENRES).some((g) => g.label.toLowerCase() === label.toLowerCase())) {
+          if (Object.entries(GENRES).some(([k, g]) => k !== editing && g.label.toLowerCase() === label.toLowerCase())) {
             msg.textContent = `„${label}“ gibt es schon.`;
+            return;
+          }
+          if (editing) { // Bearbeiten abschließen: Namen (und Farbe) übernehmen
+            try {
+              await saveEdit({ label, accent: color });
+              if (state.current && state.current.kind === editing) showEditor();
+              closeForm();
+            } catch (e) { msg.textContent = e.message; }
             return;
           }
           const slug = label.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
