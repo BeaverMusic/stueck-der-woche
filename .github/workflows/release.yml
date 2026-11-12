@@ -1,0 +1,48 @@
+# Veröffentlicht eine neue Version: baut das Mac-Abbild (.dmg), die Programm-ZIP und
+# die Prüfsummen und hängt sie an eine GitHub-Veröffentlichung („Release“).
+# Die Update-Funktion der App holt sich neue Versionen genau von hier.
+#
+# Starten: auf GitHub „Actions“ → „Veröffentlichung“ → „Run workflow“.
+# Die Versionsnummer kommt aus app/__init__.py, die Neuerungen aus NEUERUNGEN.md.
+name: Veröffentlichung
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Versionsnummer prüfen
+        id: version
+        run: |
+          APP_VERSION=$(python3 -c "from app import VERSION; print(VERSION)")
+          JS_VERSION=$(grep -oE 'APP_VERSION = "[^"]+"' web/app.js | cut -d'"' -f2)
+          echo "app: $APP_VERSION, web: $JS_VERSION"
+          test "$APP_VERSION" = "$JS_VERSION" || { echo "::error::Versionen in app/__init__.py und web/app.js passen nicht zusammen"; exit 1; }
+          if gh release view "v$APP_VERSION" >/dev/null 2>&1; then
+            echo "::error::Version $APP_VERSION ist schon veröffentlicht – bitte erst die Versionsnummer erhöhen"; exit 1
+          fi
+          echo "version=$APP_VERSION" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Pillow für das App-Symbol
+        run: python3 -m pip install --quiet --break-system-packages pillow || python3 -m pip install --quiet pillow
+
+      - name: Dateien bauen
+        run: python3 paket/build_release.py
+
+      - name: Veröffentlichen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          python3 paket/release_notes.py "$VERSION" > notes.md
+          gh release create "v$VERSION" dist/* --target "$GITHUB_SHA" \
+            --title "Stück der Woche $VERSION" --notes-file notes.md

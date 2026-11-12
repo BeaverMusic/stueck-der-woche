@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.DS_Store
+dist/
+*.dmg
+paket/arch/src/
+paket/arch/pkg/
+paket/arch/*.pkg.tar.*

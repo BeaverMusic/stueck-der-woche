@@ -26,6 +26,9 @@ from app import VERSION  # noqa: E402
 INCLUDE = ["app", "web", "paket", "stueck_der_woche.py", "install.sh", "deinstallieren.sh",
            "start.sh", "start.command", "LIESMICH.md", "README.md"]
 SKIP_PARTS = {"__pycache__", ".DS_Store", "src", "pkg"}
+# Immer ausführbar – auch wenn die Rechte beim Hochladen über die GitHub-Webseite verloren gingen
+EXECUTABLE = {"install.sh", "deinstallieren.sh", "start.sh", "start.command", "stueck_der_woche.py",
+              "paket/mac/StueckDerWoche", "paket/build_release.py", "paket/mac/build_dmg.py"}
 
 
 def build_zip(dist: Path) -> Path:
@@ -41,7 +44,8 @@ def build_zip(dist: Path) -> Path:
                 if SKIP_PARTS & set(rel.parts) or f.suffix in (".pyc", ".dmg", ".zst"):
                     continue
                 info = zipfile.ZipInfo(f"stueck-der-woche/{rel.as_posix()}", date_time=(2026, 1, 1, 0, 0, 0))
-                info.external_attr = (0o755 if os.access(f, os.X_OK) else 0o644) << 16
+                exe = rel.as_posix() in EXECUTABLE or os.access(f, os.X_OK)
+                info.external_attr = (0o755 if exe else 0o644) << 16
                 info.compress_type = zipfile.ZIP_DEFLATED
                 zf.writestr(info, f.read_bytes())
     return out
