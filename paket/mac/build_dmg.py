@@ -327,7 +327,7 @@ def write_iso(src: Path, out: Path, volume: str) -> None:
 
 def main() -> None:
     out_dir = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT.parent
-    out = out_dir / f"Stück der Woche {VERSION}.dmg"
+    out = out_dir / f"Stueck-der-Woche-{VERSION}.dmg"  # ohne Umlaut/Leerzeichen (GitHub ändert sie sonst)
     with tempfile.TemporaryDirectory() as tmp:
         stage = Path(tmp) / "inhalt"
         stage.mkdir()

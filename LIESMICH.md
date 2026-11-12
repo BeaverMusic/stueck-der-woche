@@ -30,7 +30,7 @@ Für den automatischen PDF-Export nutzt sie einen unsichtbaren Chromium:
 
 ### macOS – mit dem Installationsabbild (ohne Terminal)
 
-1. **„Stück der Woche 6.6.dmg“** doppelklicken. Es öffnet sich ein Fenster mit
+1. **„Stueck-der-Woche-6.6.dmg“** (unter github.com/BeaverMusic/stueck-der-woche → Releases) doppelklicken. Es öffnet sich ein Fenster mit
    der App, einer Verknüpfung „Programme“ und einer kurzen Anleitung.
 2. **„Stück der Woche“ doppelklicken.** Die App bietet an, sich selbst in den
    Ordner „Programme“ zu kopieren, und startet danach von dort.
