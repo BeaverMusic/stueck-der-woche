@@ -151,10 +151,23 @@
   // Weitere Farben für eigene Arten
   const EXTRA_ACCENTS = ["#6B3FA0", "#0F6E78", "#B3541E", "#7A1F4F", "#4A5B2A"];
 
-  /* Eigene Arten (aus den Einstellungen) zu den eingebauten hinzufügen. */
+  // Ursprüngliche Namen und Farben der eingebauten Typen (zum Zurücksetzen)
+  const BUILTIN = {};
+  for (const [k, g] of Object.entries(GENRES)) BUILTIN[k] = { label: g.label, accent: g.accent };
+
+  /* Typen aus den Einstellungen anwenden: eigene hinzufügen, eingebaute umbenennen,
+     umfärben oder ausblenden (ausgeblendete bleiben für bestehende Blätter bekannt). */
   function setCustomKinds(list) {
     for (const k of Object.keys(GENRES)) if (GENRES[k].custom) delete GENRES[k];
+    for (const [k, d] of Object.entries(BUILTIN)) Object.assign(GENRES[k], d, { hidden: false });
     for (const c of Array.isArray(list) ? list : []) {
+      if (c && BUILTIN[c.key]) {
+        const g = GENRES[c.key];
+        if (c.label) g.label = String(c.label);
+        if (c.accent) g.accent = safeColor(c.accent);
+        g.hidden = !!c.hidden;
+        continue;
+      }
       if (!c || !/^k-[a-z0-9-]+$/.test(c.key) || GENRES[c.key]) continue;
       GENRES[c.key] = { label: String(c.label || "Eigene Art"), accent: safeColor(c.accent),
         fields: (c.fields || []).map((f) => [String(f[0]), !!f[1]]), base: c.base in GENRES ? c.base : "sonstiges", custom: true };
@@ -393,6 +406,6 @@ ${creditHtml}
     return Promise.all([fonts, ...loads]);
   }
 
-  window.Sheet = { GENRES, ACCENTS, EXTRA_ACCENTS, setCustomKinds, baseKind, IMAGE_DEFAULTS, FONTS, DESIGN_DEFAULTS, SIZE_LIMITS, design, loadFonts,
+  window.Sheet = { GENRES, BUILTIN, ACCENTS, EXTRA_ACCENTS, setCustomKinds, baseKind, IMAGE_DEFAULTS, FONTS, DESIGN_DEFAULTS, SIZE_LIMITS, design, loadFonts,
     newSheet, render, overflows, whenReady, fitTitles, esc };
 })();

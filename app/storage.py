@@ -115,6 +115,16 @@ def _clean_kinds(value: str) -> str:
             continue
         key = str(item.get("key", ""))
         label = " ".join(str(item.get("label", "")).split())[:40]
+        if key in BASE_KINDS and key not in seen:
+            # Eingebauter Typ: nur Name, Farbe und „ausgeblendet“ lassen sich ändern
+            entry = {"key": key, "hidden": bool(item.get("hidden"))}
+            if label:
+                entry["label"] = label
+            if re.fullmatch(r"#[0-9a-fA-F]{6}", str(item.get("accent", ""))):
+                entry["accent"] = str(item["accent"])
+            out.append(entry)
+            seen.add(key)
+            continue
         if not re.fullmatch(r"k-[a-z0-9-]{1,48}", key) or key in seen or not label:
             continue
         accent = str(item.get("accent", ""))
@@ -154,9 +164,8 @@ def base_kind(kind: str) -> str:
 
 def kind_label(kind: str) -> str:
     labels = {"klassik": "Klassik", "pop": "Pop/Rock", "jazz": "Jazz", "sonstiges": "Sonstiges"}
-    if kind in labels:
-        return labels[kind]
-    return next((k["label"] for k in custom_kinds() if k.get("key") == kind), "Sonstiges")
+    own = next((k.get("label") for k in custom_kinds() if k.get("key") == kind), "")
+    return own or labels.get(kind, "Sonstiges")
 
 
 def _clean_setting(key: str, value: str) -> str:

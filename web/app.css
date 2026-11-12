@@ -364,19 +364,27 @@ label.check { display: flex; align-items: center; gap: 8px; font-size: 14px; mar
 
 /* Eigene Typen im Dialog „Neues Blatt“ */
 .type-tile { position: relative; display: flex; }
-.type-tile > .btn { flex: 1; justify-content: flex-start; min-height: 44px; }
-.type-tile.custom > .btn { padding-left: 34px; }
+.genre-grid .type-tile > .btn { flex: 1; justify-content: flex-start; min-height: 44px; padding-left: 34px; padding-right: 40px; }
 .genre-grid .type-color { position: absolute; left: 11px; top: calc(50% - 8px); width: 16px; height: 16px; margin: 0; padding: 0;
   min-width: 16px; min-height: 16px; max-height: 16px; box-sizing: border-box; appearance: none; line-height: 0;
   border-radius: 50%; border: 2px solid transparent; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.15); cursor: pointer; z-index: 1;
   transition: transform 0.12s; }
 .genre-grid .type-color:hover, .genre-grid .type-color:focus-visible { transform: scale(1.25); }
 .type-tile.editing > .btn { border-color: var(--text); }
-.type-del { position: absolute; top: -7px; right: -7px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
-  border: 1px solid var(--line, #ddd); background: var(--bg, #fff); color: var(--muted, #666); font-size: 14px; line-height: 1;
-  cursor: pointer; opacity: 0; transition: opacity 0.15s; }
-.type-tile:hover .type-del, .type-del:focus-visible, .type-del.sure { opacity: 1; }
-.type-del.sure { color: #fff; background: var(--danger, #A3302A); border-color: transparent; font-size: 12px; font-weight: 600; }
+/* Entfernen: rundes Kreuz innerhalb der Kachel, erscheint beim Darüberfahren */
+.genre-grid .type-del { position: absolute; right: 8px; top: calc(50% - 12px); width: 24px; height: 24px;
+  min-width: 24px; min-height: 24px; max-height: 24px; box-sizing: border-box; margin: 0; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center; appearance: none;
+  border: 0; border-radius: 50%; background: transparent; color: var(--muted, #777); cursor: pointer; z-index: 1;
+  opacity: 0; transition: opacity 0.15s, background 0.15s, color 0.15s; }
+.type-tile:hover .type-del, .genre-grid .type-del:focus-visible { opacity: 1; }
+.genre-grid .type-del:hover { background: rgba(163, 48, 42, 0.12); color: var(--danger, #A3302A); }
+.genre-grid .type-del.sure { opacity: 1; width: auto; padding: 0 10px; border-radius: 12px; color: #fff;
+  background: var(--danger, #A3302A); font: inherit; font-size: 12px; font-weight: 600; }
+@media (hover: none) { .genre-grid .type-del { opacity: 0.7; } }
+.link-btn { appearance: none; border: 0; background: none; padding: 0; margin: 10px 0 0; font: inherit; font-size: 13px;
+  color: var(--muted, #666); text-decoration: underline; cursor: pointer; }
+.link-btn:hover { color: var(--text); }
 .genre-grid .type-add { min-height: 44px; font-size: 22px; font-weight: 400; justify-content: center;
   border: 1px dashed var(--line-strong); color: var(--muted, #666); }
 .genre-grid .type-add:hover { border-style: solid; color: var(--text); background: var(--panel); }
@@ -385,4 +393,3 @@ label.check { display: flex; align-items: center; gap: 8px; font-size: 14px; mar
 .type-form .swatches { flex-wrap: wrap; }
 .type-form-actions { display: flex; align-items: center; gap: 8px; }
 .type-form-actions .hint { margin-right: auto; }
-@media (hover: none) { .type-del { opacity: 1; } }

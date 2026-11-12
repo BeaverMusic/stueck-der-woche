@@ -2,7 +2,7 @@
 (function () {
   "use strict";
 
-  const APP_VERSION = "0.6.1.1"; // muss zu app/__init__.py passen
+  const APP_VERSION = "0.6.1.2"; // muss zu app/__init__.py passen
   const { GENRES, ACCENTS, newSheet, esc } = window.Sheet;
   const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -160,7 +160,7 @@
 
   function renderGenreFilter() {
     const box = $("#genre-filter");
-    const items = [["all", "Alle"], ...Object.entries(GENRES).map(([k, g]) => [k, g.label])];
+    const items = [["all", "Alle"], ...Object.entries(GENRES).filter(([, g]) => !g.hidden).map(([k, g]) => [k, g.label])];
     box.innerHTML = items
       .map(([k, l]) => `<button type="button" class="chip" data-g="${k}" aria-pressed="${state.genre === k}">${esc(l)}</button>`)
       .join("");
@@ -231,16 +231,21 @@
     s.fields = (s.fields || []).map((f) => Object.assign({ label: "", value: "", wide: false, show: true }, f));
   }
 
+  const DEL_ICON = '<svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2l6 6M8 2L2 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+
   async function newSheetFlow() {
     const kind = await dialog(
       `<h2>Neues Blatt</h2><p>Welcher Typ von Stück? Das legt die passenden Felder und die Farbe fest. Beides kannst du danach ändern.</p>
+       <p class="hint">Tipp: Klick auf den Farbpunkt ändert Name und Farbe eines Typs, das × blendet ihn aus.</p>
        <div class="genre-grid" id="type-grid"></div>
+       <button type="button" class="link-btn" id="type-restore" hidden></button>
        <div class="type-form" id="type-form" hidden>
          <input type="text" id="tf-name" maxlength="40" placeholder="Name, z. B. Filmmusik" aria-label="Name des neuen Typs">
          <div class="swatches" id="tf-swatches">${[...Sheet.EXTRA_ACCENTS, ...ACCENTS].map((c) =>
            `<button type="button" class="swatch" data-c="${c}" style="background:${c}" aria-label="Farbe ${c}" aria-pressed="false"></button>`).join("")}
            <input type="color" id="tf-color" aria-label="Eigene Farbe"></div>
          <div class="type-form-actions"><span class="hint" id="tf-msg"></span>
+           <button type="button" class="btn btn-small btn-ghost" id="tf-reset" hidden>Standard</button>
            <button type="button" class="btn btn-small btn-ghost" id="tf-cancel">Zurück</button>
            <button type="button" class="btn btn-small btn-primary" id="tf-ok">Anlegen</button></div>
        </div>
@@ -250,17 +255,39 @@
         let color = Sheet.EXTRA_ACCENTS[0];
         let editing = null; // Schlüssel des Typs, der gerade bearbeitet wird (null = neuer Typ)
         const customs = () => parseKinds(state.settings.custom_kinds);
+        // Eintrag ändern oder (für eingebaute Typen) neu anlegen
+        const upsert = (key, changes) => {
+          const list = customs();
+          const item = list.find((x) => x.key === key);
+          if (item) Object.assign(item, changes);
+          else list.push({ key, ...changes });
+          return list;
+        };
         const saveTypes = async (list) => {
+          // Eingebaute Typen: nur speichern, was vom Werkszustand abweicht
+          list = list.map((x) => {
+            const d = Sheet.BUILTIN[x.key];
+            if (!d) return x;
+            const y = { key: x.key };
+            if (x.label && x.label !== d.label) y.label = x.label;
+            if (x.accent && x.accent.toLowerCase() !== d.accent.toLowerCase()) y.accent = x.accent;
+            if (x.hidden) y.hidden = true;
+            return Object.keys(y).length > 1 ? y : null;
+          }).filter(Boolean);
           state.settings = await post("/api/settings", { custom_kinds: JSON.stringify(list) });
           applyKinds();
         };
         const render = () => {
-          grid.innerHTML = Object.entries(GENRES).map(([k, g]) =>
-            `<div class="type-tile${g.custom ? " custom" : ""}${editing === k ? " editing" : ""}">${g.custom
-              ? `<button type="button" class="type-color" data-edit="${esc(k)}" style="background:${esc(g.accent)}" title="Farbe und Name ändern" aria-label="Farbe und Name von „${esc(g.label)}“ ändern"></button>`
-              : ""}<button type="button" class="btn" data-k="${esc(k)}">${g.custom ? "" : `<span class="dot" style="background:${esc(g.accent)}"></span>`}${esc(g.label)}</button>${
-              g.custom ? `<button type="button" class="type-del" data-del="${esc(k)}" title="Typ „${esc(g.label)}“ entfernen" aria-label="Typ „${esc(g.label)}“ entfernen">×</button>` : ""}</div>`).join("")
+          const hidden = Object.entries(GENRES).filter(([, g]) => g.hidden);
+          grid.innerHTML = Object.entries(GENRES).filter(([, g]) => !g.hidden).map(([k, g]) =>
+            `<div class="type-tile${editing === k ? " editing" : ""}">
+              <button type="button" class="type-color" data-edit="${esc(k)}" style="background:${esc(g.accent)}" title="Farbe und Name ändern" aria-label="Farbe und Name von „${esc(g.label)}“ ändern"></button>
+              <button type="button" class="btn" data-k="${esc(k)}">${esc(g.label)}</button>
+              <button type="button" class="type-del" data-del="${esc(k)}" title="„${esc(g.label)}“ entfernen" aria-label="„${esc(g.label)}“ entfernen">${DEL_ICON}</button></div>`).join("")
             + `<button type="button" class="btn btn-ghost type-add" id="type-add" title="Neuen Typ anlegen" aria-label="Neuen Typ anlegen">+</button>`;
+          const restore = $("#type-restore", dlg);
+          restore.hidden = !hidden.length;
+          restore.textContent = `Ausgeblendete Typen wiederherstellen (${hidden.map(([, g]) => g.label).join(", ")})`;
           grid.querySelectorAll("[data-k]").forEach((b) => (b.onclick = () => close(b.dataset.k)));
           grid.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => openForm(b.dataset.edit)));
           grid.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
@@ -273,7 +300,8 @@
               return;
             }
             try {
-              await saveTypes(customs().filter((x) => x.key !== key));
+              // Eingebaute Typen werden nur ausgeblendet (wiederherstellbar), eigene gelöscht
+              await saveTypes(Sheet.BUILTIN[key] ? upsert(key, { hidden: true }) : customs().filter((x) => x.key !== key));
               render();
               if (state.current && state.current.kind === key) showEditor();
             } catch (e) { toast(e.message, { error: true }); }
@@ -298,6 +326,8 @@
           $("#tf-name", dlg).value = t ? t.label : "";
           $("#tf-ok", dlg).textContent = t ? "Fertig" : "Anlegen";
           $("#tf-cancel", dlg).hidden = !!t; // beim Bearbeiten ist alles sofort gespeichert
+          $("#tf-reset", dlg).hidden = !(t && Sheet.BUILTIN[editing] &&
+            (t.label !== Sheet.BUILTIN[editing].label || t.accent.toLowerCase() !== Sheet.BUILTIN[editing].accent.toLowerCase()));
           msg.textContent = t ? "Ein Klick auf eine Farbe übernimmt sie sofort." : "";
           msg.style.color = "";
           form.hidden = false;
@@ -308,8 +338,7 @@
         const closeForm = () => { form.hidden = true; editing = null; render(); };
         // Bearbeiten: Farbe sofort speichern
         const saveEdit = async (changes) => {
-          const list = customs().map((x) => (x.key === editing ? { ...x, ...changes } : x));
-          await saveTypes(list);
+          await saveTypes(upsert(editing, changes));
           render();
           $("#type-add", dlg).hidden = true;
         };
@@ -322,6 +351,26 @@
             msg.style.color = "var(--ok)";
             msg.textContent = "✓ Farbe geändert";
           } catch (e) { msg.style.color = "var(--danger)"; msg.textContent = e.message; }
+        };
+        $("#type-restore", dlg).onclick = async () => {
+          try {
+            await saveTypes(customs().map((x) => (Sheet.BUILTIN[x.key] ? { ...x, hidden: false } : x)));
+            render();
+          } catch (e) { toast(e.message, { error: true }); }
+        };
+        $("#tf-reset", dlg).onclick = async () => { // eingebauten Typ auf Name und Farbe ab Werk
+          const d = Sheet.BUILTIN[editing];
+          try {
+            await saveTypes(customs().filter((x) => x.key !== editing));
+            color = d.accent;
+            syncColor();
+            $("#tf-name", dlg).value = d.label;
+            render();
+            $("#type-add", dlg).hidden = true;
+            $("#tf-reset", dlg).hidden = true;
+            msg.style.color = "var(--ok)";
+            msg.textContent = "✓ Auf Standard zurückgesetzt";
+          } catch (e) { msg.textContent = e.message; }
         };
         let colorTimer = 0;
         dlg.querySelectorAll("#tf-swatches .swatch").forEach((b) => (b.onclick = () => pickColor(b.dataset.c)));
@@ -505,7 +554,7 @@
       <h3>Grunddaten</h3>
       <div class="grid2">
         <div class="row"><label for="f-kind">Art</label>
-          <select id="f-kind">${GENRES[s.kind] ? "" : `<option value="${esc(s.kind)}" selected>(entfernter Typ)</option>`}${Object.entries(GENRES)
+          <select id="f-kind">${GENRES[s.kind] ? "" : `<option value="${esc(s.kind)}" selected>(entfernter Typ)</option>`}${Object.entries(GENRES).filter(([k, g]) => !g.hidden || k === s.kind)
             .map(([k, g]) => `<option value="${k}" ${s.kind === k ? "selected" : ""}>${esc(g.label)}</option>`)
             .join("")}</select></div>
         <div class="row"><span class="lbl" id="lbl-accent">Farbe</span>

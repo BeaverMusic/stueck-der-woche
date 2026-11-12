@@ -1,5 +1,10 @@
 # Neuerungen
 
+## 0.6.1.2
+- Alle Typen sind bearbeitbar – auch Klassik, Pop/Rock, Jazz und Sonstiges: Klick auf den Farbpunkt ändert Name und Farbe, „Standard“ stellt die Werkseinstellung wieder her.
+- Das × entfernt jeden Typ: eigene werden gelöscht, eingebaute nur ausgeblendet („Ausgeblendete Typen wiederherstellen“). Blätter bleiben immer erhalten.
+- Neu gestaltetes Kreuz: rund, innerhalb der Kachel, mit Rückfrage „Entfernen?“.
+
 ## 0.6.1.1
 - Eigene Typen lassen sich nachträglich ändern: Im Dialog „+ Neues Blatt“ auf den farbigen Punkt eines eigenen Typs klicken – eine neue Farbe wird sofort übernommen, der Name mit „Fertig“. Bestehende Blätter behalten ihre Farbe.
 

@@ -7,7 +7,7 @@
 # Blätter und Einstellungen liegen im Benutzerordner und bleiben bei Updates erhalten.
 
 pkgname=stueck-der-woche
-pkgver=0.6.1.1
+pkgver=0.6.1.2
 pkgrel=1
 pkgdesc="Übersichtsblätter „Stück der Woche“ für den Musikunterricht"
 arch=('any')
