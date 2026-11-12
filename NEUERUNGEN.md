@@ -1,5 +1,8 @@
 # Neuerungen
 
+## 0.6.0.1
+- Das **+** zum Anlegen eines neuen Typs im Dialog „Neues Blatt“ ist jetzt umrandet und dadurch besser zu erkennen.
+
 ## 0.6
 - Eigene Typen von Stücken: Beim „+ Neues Blatt“ legt das kleine **+** einen neuen Typ an (z. B. „Filmmusik“) – Name eintippen, Farbe wählen, fertig. Das Blatt wird gleich mit diesem Typ erstellt.
 - Eigene Typen erscheinen im Filter links und in der Auswahl im Editor. Entfernen über das kleine × an der Kachel (die Blätter bleiben erhalten).

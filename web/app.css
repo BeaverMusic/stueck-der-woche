@@ -370,7 +370,9 @@ label.check { display: flex; align-items: center; gap: 8px; font-size: 14px; mar
   cursor: pointer; opacity: 0; transition: opacity 0.15s; }
 .type-tile:hover .type-del, .type-del:focus-visible, .type-del.sure { opacity: 1; }
 .type-del.sure { color: #fff; background: var(--danger, #A3302A); border-color: transparent; font-size: 12px; font-weight: 600; }
-.type-add { min-height: 44px; font-size: 22px; font-weight: 400; justify-content: center; }
+.genre-grid .type-add { min-height: 44px; font-size: 22px; font-weight: 400; justify-content: center;
+  border: 1px dashed var(--line-strong); color: var(--muted, #666); }
+.genre-grid .type-add:hover { border-style: solid; color: var(--text); background: var(--panel); }
 .type-form { margin-top: 12px; padding: 12px; border-radius: 10px; background: rgba(0, 0, 0, 0.035); display: grid; gap: 10px; }
 .type-form input[type="text"] { width: 100%; }
 .type-form .swatches { flex-wrap: wrap; }

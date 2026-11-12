@@ -1,4 +1,4 @@
-VERSION = "0.6"
+VERSION = "0.6.0.1"
 
 # Verbindungen: IPv4 zuerst, kurze Wartezeit je Adresse (siehe net.py)
 from . import net as _net
