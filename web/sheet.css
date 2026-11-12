@@ -1,0 +1,159 @@
+/* Blattvorlage „Notenlinien“ (Design C) – DIN A5 hochkant.
+   Wird für die Vorschau im Editor und für den PDF-Export verwendet. */
+
+/* Die Schriften lädt sheet.js passend zu den Einstellungen (Reiter „Blatt“). */
+
+.sheet {
+  --accent: #2E6B4F;
+  --tint: color-mix(in srgb, var(--accent) 9%, white);
+  --tint-strong: color-mix(in srgb, var(--accent) 12%, white);
+  width: 148mm;
+  height: 210mm;
+  overflow: hidden;
+  background: #ffffff;
+  color: #1c1d1c;
+  font-family: var(--body-font, "DM Sans", "Helvetica Neue", Arial, sans-serif);
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.sheet * { box-sizing: border-box; }
+
+.sheet-inner {
+  height: 100%;
+  padding: 34px 40px 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* Kopfzeile */
+.s-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  font-size: 12px;
+}
+.s-head .s-label { font-weight: 600; color: var(--accent); }
+.s-head .s-short, .s-head .s-right { color: #555; }
+
+/* Notenlinien */
+.s-staff { display: flex; flex-direction: column; gap: 7px; }
+.s-staff div { height: 0; border-top: 1px solid var(--accent); }
+
+/* Titel, Angaben, Bild */
+.s-top { display: flex; gap: 18px; align-items: flex-start; }
+.s-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.s-title {
+  margin: 0;
+  font-family: var(--head-font, "DM Serif Display", Georgia, serif);
+  font-weight: var(--head-weight, 400);
+  font-size: var(--title-size, 27pt);
+  line-height: 1.05;
+  text-wrap: balance;
+  overflow-wrap: break-word;
+}
+.s-title.s-long { font-size: calc(var(--title-size, 27pt) * 0.83); }
+.s-title.s-xlong { font-size: calc(var(--title-size, 27pt) * 0.7); }
+.s-subtitle { margin-top: 4px; font-size: 14px; color: #444; }
+
+.s-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px 14px;
+  font-size: var(--field-size, 9.5pt);
+  line-height: 1.3;
+}
+.s-field.s-wide { grid-column: span 2; }
+.s-field .s-flabel { font-size: calc(var(--field-size, 9.5pt) * 0.96); color: var(--accent); font-weight: 600; }
+
+.s-portrait {
+  width: 164px;
+  height: 210px;
+  flex-shrink: 0;
+  border-radius: 82px 82px 8px 8px;
+  background: var(--tint);
+  overflow: hidden;
+  position: relative;
+}
+.s-portrait img {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.s-mask {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+}
+.s-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #555;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* Infotext */
+.s-info {
+  font-family: var(--info-font, inherit);
+  font-size: var(--info-size, 9.5pt);
+  line-height: 1.5;
+  text-wrap: pretty;
+  hyphens: auto;
+}
+.s-info p { margin: 0 0 6px; }
+.s-info p:last-child { margin-bottom: 0; }
+
+/* Codes */
+.s-codes {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1.5px solid var(--accent);
+  display: grid;
+  gap: 10px;
+}
+.s-code {
+  border-radius: 10px;
+  background: var(--tint);
+  padding: 10px 8px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
+}
+.s-qr { width: 70px; height: 70px; background: #fff; }
+.s-qr svg, .s-spot svg { display: block; width: 100%; height: 100%; }
+.s-spot-wrap { flex: 1; width: 100%; display: flex; align-items: center; padding: 0 4px; }
+.s-spot { width: 100%; aspect-ratio: 4 / 1; background: #fff; }
+.s-empty {
+  border: 1.5px dashed #888;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #555;
+  font-size: 12px;
+}
+.s-clabel { font-size: 12px; line-height: 1.3; text-align: center; }
+.s-clabel b { font-weight: 600; color: var(--accent); }
+.s-clabel span { color: #555; }
+
+.s-credit { font-size: 12px; color: #666; margin-top: -4px; }
+.s-codes-none + .s-credit { margin-top: auto; }

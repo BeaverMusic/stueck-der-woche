@@ -1,0 +1,66 @@
+# Paket für Arch Linux / CachyOS – wird aus dem entpackten App-Ordner gebaut.
+#
+#   cd stueck-der-woche/paket/arch
+#   makepkg -si          # bauen und installieren
+#   sudo pacman -R stueck-der-woche   # wieder entfernen
+#
+# Blätter und Einstellungen liegen im Benutzerordner und bleiben bei Updates erhalten.
+
+pkgname=stueck-der-woche
+pkgver=6.6
+pkgrel=1
+pkgdesc="Übersichtsblätter „Stück der Woche“ für den Musikunterricht"
+arch=('any')
+license=('LicenseRef-private' 'MIT')
+depends=('python')
+optdepends=(
+  'chromium: eigenes App-Fenster und PDF-Export (sonst lädt die App einen unsichtbaren Chromium)'
+  'kdialog: Ordnerauswahl unter KDE Plasma'
+  'zenity: Ordnerauswahl unter GNOME und anderen Desktops'
+)
+options=('!debug' '!strip')
+
+# Quelle ist der App-Ordner zwei Ebenen über dieser Datei
+_src="$startdir/../.."
+
+pkgver() {
+  python -c "import sys; sys.path.insert(0, '$_src'); from app import VERSION; print(VERSION)" 2>/dev/null \
+    || echo "$pkgver"
+}
+
+package() {
+  local dest="$pkgdir/opt/$pkgname"
+  install -d "$dest"
+  cp -R "$_src/app" "$_src/web" "$dest/"
+  install -m644 "$_src/stueck_der_woche.py" "$_src/LIESMICH.md" "$dest/"
+  find "$dest" -name "__pycache__" -type d -prune -exec rm -rf {} +
+  # Vorübersetzen, damit der Start schnell ist (Ordner ist später schreibgeschützt)
+  python -m compileall -q -d "/opt/$pkgname" "$dest" >/dev/null
+
+  install -Dm755 /dev/stdin "$pkgdir/usr/bin/$pkgname" <<EOF
+#!/bin/sh
+# Startet „Stück der Woche“ (Paket)
+cd /opt/$pkgname || exit 1
+exec python stueck_der_woche.py "\$@"
+EOF
+
+  install -Dm644 "$_src/app/icon.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/$pkgname.png"
+  install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/$pkgname.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=Stück der Woche
+Comment=Übersichtsblätter für den Musikunterricht
+Exec=$pkgname
+Icon=$pkgname
+Terminal=false
+Categories=Education;Office;
+StartupNotify=false
+EOF
+
+  # Lizenz des mitgelieferten QR-Code-Erzeugers (aus ReportLab)
+  install -Dm644 /dev/stdin "$pkgdir/usr/share/licenses/$pkgname/qrencoder-MIT.txt" <<'EOF'
+app/qrencoder.py stammt aus ReportLab (reportlab/graphics/barcode/qrencoder.py).
+Copyright (c) 2009 Kazuhiko Arase; Copyright (c) 2014 Open End AB.
+Licensed under the MIT license: http://www.opensource.org/licenses/mit-license.php
+EOF
+}

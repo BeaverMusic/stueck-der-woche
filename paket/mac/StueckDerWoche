@@ -1,0 +1,181 @@
+#!/bin/bash
+# Startprogramm der Mac-App „Stück der Woche“ (liegt in Contents/MacOS).
+# Läuft mit dem bash 3.2 von macOS. Alles geschieht über normale Fenster –
+# ein Terminal ist nicht nötig:
+#   1. Wird die App direkt aus dem Installations-Abbild (.dmg) gestartet, bietet sie
+#      an, sich selbst in den Ordner „Programme“ zu kopieren.
+#   2. Fehlt Python, wird es (nach Rückfrage) von python.org geladen, die Signatur
+#      geprüft und mit der normalen Passwortabfrage von macOS installiert.
+#   3. Dann startet die eigentliche App.
+
+APP_NAME="Stück der Woche"
+HERE="$(cd "$(dirname "$0")/../.." && pwd)"          # …/Stück der Woche.app
+PROG="$HERE/Contents/Resources/programm"
+SUPPORT="$HOME/Library/Application Support/StueckDerWoche"
+LOG="$SUPPORT/ausgabe.txt"
+mkdir -p "$SUPPORT"
+
+say() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG"; }
+
+dialog() {  # dialog "Text" "Knopf1" "Knopf2" → gewählter Knopf (leer bei Abbruch)
+  /usr/bin/osascript - "$APP_NAME" "$@" <<'EOF' 2>/dev/null
+on run argv
+  set t to item 1 of argv
+  set msg to item 2 of argv
+  set b to items 3 thru -1 of argv
+  try
+    set r to display dialog msg with title t buttons b default button (count of b) with icon note
+    return button returned of r
+  on error
+    return ""
+  end try
+end run
+EOF
+}
+
+alert() {
+  /usr/bin/osascript - "$APP_NAME" "$1" <<'EOF' >/dev/null 2>&1
+on run argv
+  display alert (item 1 of argv) message (item 2 of argv) as warning
+end run
+EOF
+}
+
+notify() {
+  /usr/bin/osascript -e 'on run argv' -e 'display notification (item 2 of argv) with title (item 1 of argv)' \
+    -e 'end run' "$APP_NAME" "$1" >/dev/null 2>&1 || true
+}
+
+as_admin() {  # Befehl mit der Passwortabfrage von macOS als Administrator ausführen
+  /usr/bin/osascript - "$1" "$2" <<'EOF'
+on run argv
+  do shell script (item 1 of argv) with prompt (item 2 of argv) with administrator privileges
+end run
+EOF
+}
+
+# Bei macOS anmelden, damit Finder, Launchpad und Spotlight (Cmd+Leertaste) die App
+# kennen: lokal signieren („ad hoc“, ohne Apple-Konto), registrieren, indizieren.
+register_app() {
+  local app="$1"
+  if ! /usr/bin/codesign --verify "$app" >/dev/null 2>&1; then
+    /usr/bin/codesign --force --deep --sign - "$app" >> "$LOG" 2>&1 || say "codesign fehlgeschlagen"
+  fi
+  local lsreg=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+  [ -x "$lsreg" ] && "$lsreg" -f -R "$app" >/dev/null 2>&1
+  /usr/bin/mdimport -i "$app" >/dev/null 2>&1 || /usr/bin/mdimport "$app" >/dev/null 2>&1
+  say "Bei macOS angemeldet: $app"
+}
+
+# ------------------------------------------------------------ 1. In „Programme“ kopieren
+case "$HERE" in
+  /Volumes/*|*/AppTranslocation/*)
+    choice="$(dialog "Stück der Woche wird jetzt in den Ordner „Programme“ kopiert. Danach findest du die App dort und über Spotlight (Cmd+Leertaste).
+
+Deine Blätter und Einstellungen bleiben bei einem Update erhalten." "Abbrechen" "Installieren")"
+    if [ "$choice" = "Installieren" ]; then
+      # Bei verschobenen Apps (App Translocation) liegt das Original noch im Abbild
+      SRC_APP="$HERE"
+      case "$HERE" in
+        */AppTranslocation/*)
+          for v in /Volumes/*/"$APP_NAME.app"; do [ -d "$v" ] && SRC_APP="$v" && break; done ;;
+      esac
+      TARGET="/Applications/$APP_NAME.app"
+      # Laufende alte Version beenden
+      /usr/bin/curl -s -m 2 -X POST -H "X-App: 1" -H "Content-Type: application/json" -d '{}' \
+        http://127.0.0.1:47110/api/quit >/dev/null 2>&1 || true
+      sleep 1
+      COPY="rm -rf '$TARGET.neu' && /usr/bin/ditto '$SRC_APP' '$TARGET.neu' && rm -rf '$TARGET' && mv '$TARGET.neu' '$TARGET' && /usr/bin/xattr -dr com.apple.quarantine '$TARGET'"
+      if { [ -w /Applications ] && { [ ! -e "$TARGET" ] || [ -w "$TARGET" ]; }; } ; then
+        ok=0; sh -c "$COPY" >> "$LOG" 2>&1 && ok=1
+      else
+        ok=0; as_admin "$COPY && chown -R $(id -un) '$TARGET'" "Stück der Woche möchte sich in den Ordner „Programme“ kopieren." >> "$LOG" 2>&1 && ok=1
+      fi
+      if [ "$ok" = 1 ]; then
+        rm -rf "$HOME/Applications/$APP_NAME.app" 2>/dev/null  # ältere Version im Benutzerordner
+        say "In Programme installiert: $TARGET"
+        # Abbild auswerfen (gelingt nur, wenn es nicht mehr benutzt wird)
+        VOL="$(echo "$SRC_APP" | sed -n 's|^\(/Volumes/[^/]*\)/.*|\1|p')"
+        [ -n "$VOL" ] && (sleep 3; /usr/sbin/diskutil eject "$VOL" >/dev/null 2>&1) &
+        open "$TARGET"
+        exit 0
+      fi
+      alert "Das Kopieren hat nicht geklappt. Du kannst die App auch selbst aus dem Fenster auf „Programme“ ziehen."
+      exit 1
+    fi
+    exit 0
+    ;;
+esac
+
+# Einmal je Version und Ort anmelden (auch für bereits installierte Apps)
+MARK="$SUPPORT/angemeldet"
+STAMP="$(/usr/bin/defaults read "$HERE/Contents/Info" CFBundleVersion 2>/dev/null) $HERE"
+if [ "$(cat "$MARK" 2>/dev/null)" != "$STAMP" ]; then
+  register_app "$HERE"
+  echo "$STAMP" > "$MARK"
+fi
+
+# ------------------------------------------------------------ 2. Python finden oder installieren
+find_python() {
+  local p
+  for p in /Library/Frameworks/Python.framework/Versions/Current/bin/python3 \
+           /opt/homebrew/bin/python3 /usr/local/bin/python3 /usr/bin/python3; do
+    [ -x "$p" ] || continue
+    # /usr/bin/python3 ist ohne Entwicklerwerkzeuge nur ein Platzhalter
+    if [ "$p" = "/usr/bin/python3" ] && ! /usr/bin/xcode-select -p >/dev/null 2>&1; then continue; fi
+    if "$p" -c 'import sys; sys.exit(sys.version_info < (3, 10))' >/dev/null 2>&1; then
+      PY="$p"; return 0
+    fi
+  done
+  return 1
+}
+
+install_python() {
+  local list v url tmp pkg
+  list="$(/usr/bin/curl -fsSL -m 30 https://www.python.org/ftp/python/)" || return 1
+  url=""
+  for v in $(printf '%s\n' "$list" | grep -oE 'href="3\.[0-9]+\.[0-9]+/"' | grep -oE '3\.[0-9]+\.[0-9]+' \
+             | sort -t. -k1,1n -k2,2n -k3,3n -u | tail -n 8 | sort -t. -k1,1nr -k2,2nr -k3,3nr); do
+    if /usr/bin/curl -fsIL -m 20 "https://www.python.org/ftp/python/$v/python-$v-macos11.pkg" >/dev/null 2>&1; then
+      url="https://www.python.org/ftp/python/$v/python-$v-macos11.pkg"; break
+    fi
+  done
+  [ -n "$url" ] || return 1
+  tmp="$(mktemp -d)"; pkg="$tmp/python-$v.pkg"
+  notify "Python $v wird geladen (ca. 70 MB) – das kann einige Minuten dauern …"
+  say "Lade $url"
+  /usr/bin/curl -fsSL -o "$pkg" "$url" || { rm -rf "$tmp"; return 1; }
+  if ! /usr/sbin/pkgutil --check-signature "$pkg" 2>/dev/null | grep -q "Python Software Foundation"; then
+    say "Signatur des Python-Pakets ungültig"; rm -rf "$tmp"; return 2
+  fi
+  as_admin "/usr/sbin/installer -pkg '$pkg' -target /" \
+    "Stück der Woche möchte Python $v installieren (offizielles Paket von python.org)." >> "$LOG" 2>&1
+  local rc=$?
+  rm -rf "$tmp"
+  return $rc
+}
+
+PY=""
+if ! find_python; then
+  choice="$(dialog "Stück der Woche braucht Python (kostenlos, von python.org).
+
+Es wird jetzt einmalig geladen und installiert. Dafür fragt macOS nach deinem Passwort." "Abbrechen" "Python installieren")"
+  [ "$choice" = "Python installieren" ] || exit 0
+  install_python
+  rc=$?
+  if [ $rc = 2 ]; then
+    alert "Das heruntergeladene Python-Paket war nicht korrekt signiert und wurde nicht installiert."
+    exit 1
+  fi
+  if ! find_python; then
+    alert "Python konnte nicht installiert werden (keine Internetverbindung?). Alternativ von https://www.python.org/downloads/ installieren und die App erneut starten."
+    exit 1
+  fi
+  notify "Python ist installiert – Stück der Woche startet."
+fi
+
+# ------------------------------------------------------------ 3. App starten
+cd "$PROG" || { alert "Die App ist unvollständig. Bitte neu installieren."; exit 1; }
+# Zwischendateien von Python nicht in die (signierte) App schreiben
+export PYTHONPYCACHEPREFIX="$SUPPORT/pycache"
+exec "$PY" stueck_der_woche.py >> "$LOG" 2>&1

@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stück der Woche</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+    <span>Stück der Woche</span>
+  </div>
+  <div id="busy" class="busy-top" hidden></div>
+  <div id="status" class="status" aria-live="polite"></div>
+  <div id="update-bar" class="update-bar" hidden></div>
+  <div class="actions">
+    <button type="button" id="btn-pdf-a5" class="btn" disabled>PDF digital (A5)</button>
+    <button type="button" id="btn-pdf-a4" class="btn btn-primary" disabled>PDF zum Drucken (A4)</button>
+    <button type="button" id="btn-print" class="btn" disabled>Drucken …</button>
+    <button type="button" id="btn-duplicate" class="btn btn-ghost" disabled>Duplizieren</button>
+    <button type="button" id="btn-delete" class="btn btn-ghost btn-danger" disabled>Löschen</button>
+    <button type="button" id="btn-settings" class="btn btn-ghost" aria-label="Einstellungen" title="Einstellungen">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+    </button>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="library">
+    <button type="button" id="btn-new" class="btn btn-primary btn-block">+ Neues Blatt</button>
+    <label class="visually-hidden" for="search">Blätter durchsuchen</label>
+    <input id="search" type="search" placeholder="Suchen …" autocomplete="off">
+    <div id="genre-filter" class="chips" role="group" aria-label="Nach Genre filtern"></div>
+    <ul id="sheet-list" class="sheet-list"></ul>
+  </aside>
+
+  <main id="editor" class="editor" hidden></main>
+
+  <section id="empty" class="empty">
+    <h2>Noch kein Blatt ausgewählt</h2>
+    <p>Lege links ein neues Blatt an oder wähle eines aus deiner Sammlung.</p>
+  </section>
+
+  <section class="preview-pane" aria-label="Vorschau">
+    <div id="overflow-warning" class="warning" hidden>Der Inhalt passt nicht auf das Blatt. Kürze den Infotext oder blende Angaben aus.</div>
+    <div id="preview-box" class="preview-box">
+      <iframe id="preview" src="preview.html" title="Vorschau des Blatts"></iframe>
+    </div>
+  </section>
+</div>
+
+<dialog id="dlg" class="dialog"></dialog>
+<div id="toast" class="toast" role="status" hidden></div>
+
+<script src="sheet.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

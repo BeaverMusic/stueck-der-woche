@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Druck</title>
+<link rel="stylesheet" href="sheet.css">
+<style>
+  html, body { margin: 0; padding: 0; background: #fff; }
+  @page { margin: 0; }
+  .page { display: flex; overflow: hidden; }
+  .page.a5 { width: 148mm; height: 210mm; }
+  .page.a4 { width: 297mm; height: 210mm; }
+  /* Schnittlinie zwischen den beiden A5-Blättern */
+  .cut { width: 1mm; height: 210mm; position: relative; flex-shrink: 0; }
+  .cut::after {
+    content: ""; position: absolute; left: 50%; top: 4mm; bottom: 4mm;
+    border-left: 0.3mm dashed #b5b5b5;
+  }
+</style>
+</head>
+<body>
+<div id="out" class="page"></div>
+<script src="sheet.js"></script>
+<script src="print.js"></script>
+</body>
+</html>
