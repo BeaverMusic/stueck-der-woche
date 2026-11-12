@@ -1,0 +1,23 @@
+# Prüft jeden neuen Stand: keine Claude-Angaben in Commit-Nachrichten.
+# Schlägt die Prüfung fehl, erscheint bei dem Commit auf GitHub ein rotes Kreuz.
+name: Prüfung
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  commits:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Keine Claude-Angaben in Commits
+        run: |
+          if git log --format='%H%n%B' | grep -iE '^(Co-Authored-By:.*(claude|anthropic)|Claude-Session:|.*Generated with \[?Claude Code)'; then
+            echo "::error::Commit-Nachrichten enthalten Claude-Angaben – bitte entfernen (siehe CLAUDE.md)."
+            exit 1
+          fi
+          echo "Alles sauber."
