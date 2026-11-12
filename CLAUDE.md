@@ -10,6 +10,10 @@
 - Autor jedes Commits: `BeaverMusic <104221021+BeaverMusic@users.noreply.github.com>`.
   Keine andere (insbesondere keine private) E-Mail-Adresse verwenden.
 - Commit-Nachrichten auf Deutsch, kurz und sachlich.
+- **Nichts committen oder pushen und keine Veröffentlichung starten, bevor der Inhaber
+  ausdrücklich zugestimmt hat.** Änderungen erst lokal vorbereiten und vorstellen.
+- **Versionsnummern nie selbst wählen**, sondern immer beim Inhaber erfragen
+  (seit 0.6: `0.x` bzw. `0.x.y`).
 
 ## Projekt
 

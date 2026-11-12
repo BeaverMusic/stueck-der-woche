@@ -1,0 +1,42 @@
+# Löscht Veröffentlichungen („Releases“) samt ihren Versionsmarken.
+# Starten: „Actions“ → „Veröffentlichungen löschen“ → „Run workflow“.
+# Zur Sicherheit muss im Feld „bestaetigung“ genau LÖSCHEN stehen.
+name: Veröffentlichungen löschen
+
+on:
+  workflow_dispatch:
+    inputs:
+      behalten:
+        description: "Diese Version behalten (z. B. v0.6) – leer = alle löschen"
+        required: false
+        default: ""
+      bestaetigung:
+        description: "Zur Sicherheit LÖSCHEN eintippen"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  loeschen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Bestätigung prüfen
+        run: test "${{ inputs.bestaetigung }}" = "LÖSCHEN" || { echo "::error::Nicht bestätigt – nichts gelöscht."; exit 1; }
+      - name: Löschen
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          KEEP: ${{ inputs.behalten }}
+        run: |
+          for tag in $(gh release list -R "$REPO" --limit 200 --json tagName -q '.[].tagName'); do
+            [ "$tag" = "$KEEP" ] && continue
+            echo "Lösche $tag"
+            gh release delete "$tag" -R "$REPO" --yes --cleanup-tag
+          done
+          # Versionsmarken ohne Veröffentlichung ebenfalls entfernen
+          for tag in $(gh api "repos/$REPO/tags" --paginate -q '.[].name'); do
+            [ "$tag" = "$KEEP" ] && continue
+            echo "Lösche Marke $tag"
+            gh api -X DELETE "repos/$REPO/git/refs/tags/$tag" || true
+          done

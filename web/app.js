@@ -2,7 +2,7 @@
 (function () {
   "use strict";
 
-  const APP_VERSION = "6.7"; // muss zu app/__init__.py passen
+  const APP_VERSION = "0.6"; // muss zu app/__init__.py passen
   const { GENRES, ACCENTS, newSheet, esc } = window.Sheet;
   const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -233,15 +233,90 @@
 
   async function newSheetFlow() {
     const kind = await dialog(
-      `<h2>Neues Blatt</h2><p>Welche Art von Stück? Das legt die passenden Felder und die Farbe fest. Beides kannst du danach ändern.</p>
-       <div class="genre-grid">${Object.entries(GENRES)
-         .map(([k, g]) => `<button type="button" class="btn" data-k="${k}"><span class="dot" style="background:${g.accent}"></span>${esc(g.label)}</button>`)
-         .join("")}<button type="button" class="btn btn-ghost" data-k="__neu__">+ Eigene Art …</button></div>
+      `<h2>Neues Blatt</h2><p>Welcher Typ von Stück? Das legt die passenden Felder und die Farbe fest. Beides kannst du danach ändern.</p>
+       <div class="genre-grid" id="type-grid"></div>
+       <div class="type-form" id="type-form" hidden>
+         <input type="text" id="tf-name" maxlength="40" placeholder="Name, z. B. Filmmusik" aria-label="Name des neuen Typs">
+         <div class="swatches" id="tf-swatches">${[...Sheet.EXTRA_ACCENTS, ...ACCENTS].map((c) =>
+           `<button type="button" class="swatch" data-c="${c}" style="background:${c}" aria-label="Farbe ${c}" aria-pressed="false"></button>`).join("")}
+           <input type="color" id="tf-color" aria-label="Eigene Farbe"></div>
+         <div class="type-form-actions"><span class="hint" id="tf-msg"></span>
+           <button type="button" class="btn btn-small btn-ghost" id="tf-cancel">Zurück</button>
+           <button type="button" class="btn btn-small btn-primary" id="tf-ok">Anlegen</button></div>
+       </div>
        <div class="buttons"><button type="button" class="btn" data-close>Abbrechen</button></div>`,
-      (dlg, close) => dlg.querySelectorAll("[data-k]").forEach((b) => (b.onclick = () => close(b.dataset.k)))
+      (dlg, close) => {
+        const grid = $("#type-grid", dlg), form = $("#type-form", dlg), msg = $("#tf-msg", dlg);
+        let color = Sheet.EXTRA_ACCENTS[0];
+        const customs = () => parseKinds(state.settings.custom_kinds);
+        const saveTypes = async (list) => {
+          state.settings = await post("/api/settings", { custom_kinds: JSON.stringify(list) });
+          applyKinds();
+        };
+        const render = () => {
+          grid.innerHTML = Object.entries(GENRES).map(([k, g]) =>
+            `<div class="type-tile"><button type="button" class="btn" data-k="${esc(k)}"><span class="dot" style="background:${esc(g.accent)}"></span>${esc(g.label)}</button>${
+              g.custom ? `<button type="button" class="type-del" data-del="${esc(k)}" title="Typ „${esc(g.label)}“ entfernen" aria-label="Typ „${esc(g.label)}“ entfernen">×</button>` : ""}</div>`).join("")
+            + `<button type="button" class="btn btn-ghost type-add" id="type-add" title="Neuen Typ anlegen" aria-label="Neuen Typ anlegen">+</button>`;
+          grid.querySelectorAll("[data-k]").forEach((b) => (b.onclick = () => close(b.dataset.k)));
+          grid.querySelectorAll("[data-del]").forEach((b) => (b.onclick = async () => {
+            const key = b.dataset.del, n = state.list.filter((x) => x.kind === key).length;
+            if (b.dataset.sure !== "1") { // erst nachfragen
+              b.dataset.sure = "1";
+              b.classList.add("sure");
+              b.textContent = "Entfernen?";
+              b.title = n ? `${n === 1 ? "1 Blatt bleibt" : n + " Blätter bleiben"} erhalten` : "";
+              return;
+            }
+            try {
+              await saveTypes(customs().filter((x) => x.key !== key));
+              render();
+              if (state.current && state.current.kind === key) showEditor();
+            } catch (e) { toast(e.message, { error: true }); }
+          }));
+          $("#type-add", dlg).onclick = openForm;
+        };
+        const syncColor = () => {
+          dlg.querySelectorAll("#tf-swatches .swatch").forEach((b) =>
+            b.setAttribute("aria-pressed", String(b.dataset.c.toLowerCase() === color.toLowerCase())));
+          $("#tf-color", dlg).value = color;
+        };
+        const openForm = () => {
+          const used = Object.values(GENRES).map((g) => g.accent.toLowerCase());
+          color = Sheet.EXTRA_ACCENTS.find((c) => !used.includes(c.toLowerCase())) || Sheet.EXTRA_ACCENTS[0];
+          syncColor();
+          $("#tf-name", dlg).value = "";
+          msg.textContent = "";
+          form.hidden = false;
+          $("#type-add", dlg).hidden = true;
+          $("#tf-name", dlg).focus();
+        };
+        const closeForm = () => { form.hidden = true; $("#type-add", dlg).hidden = false; };
+        dlg.querySelectorAll("#tf-swatches .swatch").forEach((b) => (b.onclick = () => { color = b.dataset.c; syncColor(); }));
+        $("#tf-color", dlg).oninput = (e) => { color = e.target.value; syncColor(); };
+        $("#tf-cancel", dlg).onclick = closeForm;
+        const create = async () => {
+          const label = $("#tf-name", dlg).value.replace(/\s+/g, " ").trim();
+          msg.style.color = "var(--danger)";
+          if (!label) { msg.textContent = "Bitte einen Namen eintragen."; return; }
+          if (Object.values(GENRES).some((g) => g.label.toLowerCase() === label.toLowerCase())) {
+            msg.textContent = `„${label}“ gibt es schon.`;
+            return;
+          }
+          const slug = label.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+            .replace(/ß/g, "ss").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30) || "typ";
+          const key = `k-${slug}-${Math.random().toString(36).slice(2, 6)}`;
+          try {
+            await saveTypes([...customs(), { key, label, accent: color, base: "sonstiges", fields: GENRES.sonstiges.fields }]);
+            close(key); // gleich ein Blatt dieses Typs anlegen
+          } catch (e) { msg.textContent = e.message; }
+        };
+        $("#tf-ok", dlg).onclick = create;
+        $("#tf-name", dlg).onkeydown = (e) => { if (e.key === "Enter") { e.preventDefault(); create(); } };
+        render();
+      }
     );
     if (!kind) return;
-    if (kind === "__neu__") return settingsFlow("arten", { newKind: true });
     await flushSave();
     const sheet = newSheet(kind);
     try {
@@ -385,7 +460,7 @@
       <h3>Grunddaten</h3>
       <div class="grid2">
         <div class="row"><label for="f-kind">Art</label>
-          <select id="f-kind">${GENRES[s.kind] ? "" : `<option value="${esc(s.kind)}" selected>(gelöschte Art)</option>`}${Object.entries(GENRES)
+          <select id="f-kind">${GENRES[s.kind] ? "" : `<option value="${esc(s.kind)}" selected>(entfernter Typ)</option>`}${Object.entries(GENRES)
             .map(([k, g]) => `<option value="${k}" ${s.kind === k ? "selected" : ""}>${esc(g.label)}</option>`)
             .join("")}</select></div>
         <div class="row"><span class="lbl" id="lbl-accent">Farbe</span>
@@ -1489,7 +1564,6 @@
     ["quellen", "Wikipedia"],
     ["musik", "Musikdienste"],
     ["ki", "KI-Anbindung"],
-    ["arten", "Arten"],
     ["hilfe", "Hilfe & Fehler"],
   ];
   let lastSettingsTab = "allgemein";
@@ -1523,7 +1597,7 @@
     } catch (_) { return []; }
   }
 
-  // Eigene Arten aus den Einstellungen übernehmen (Filter, Auswahl, neues Blatt)
+  // Eigene Typen aus den Einstellungen übernehmen (Filter, Auswahl, neues Blatt)
   function applyKinds() {
     Sheet.setCustomKinds(parseKinds(state.settings && state.settings.custom_kinds));
     if (state.genre !== "all" && !GENRES[state.genre]) state.genre = "all";
@@ -1532,8 +1606,7 @@
     renderList();
   }
 
-  async function settingsFlow(tab, opts) {
-    opts = opts || {};
+  async function settingsFlow(tab) {
     let s, info;
     try {
       [s, info] = await Promise.all([get("/api/settings"), post("/api/ai/info", {})]);
@@ -1545,7 +1618,6 @@
     const sel = (cur, val) => (cur === val ? "selected" : "");
     const resultRow = (id) => `<span class="hint test-out" id="${id}"></span>`;
     const D = Sheet.DESIGN_DEFAULTS;
-    let kinds = parseKinds(s.custom_kinds); // eigene Arten (wird beim Speichern übernommen)
     // Schritt-für-Schritt-Anleitung; aufgeklappt, solange der Schlüssel noch fehlt
     const guide = (title, open, steps, note) => `
         <details class="guide" ${open ? "open" : ""}><summary>${title}</summary>
@@ -1730,30 +1802,6 @@
           <button type="button" class="btn btn-small btn-ghost" id="ai-prompt-reset">Standard wiederherstellen</button>
         </details>`,
 
-      arten: `
-        <p class="hint">Eigene Arten erscheinen beim „Neuen Blatt“ und im Filter links – zusätzlich zu Klassik, Pop / Rock,
-          Jazz und Sonstiges. Name, Farbe und Angaben legst du selbst fest.</p>
-        <ul class="kind-list" id="kind-list"></ul>
-        <div class="set-actions" id="kind-actions"><button type="button" class="btn btn-small" id="kind-add">+ Neue Art</button></div>
-        <fieldset class="set-group kind-form" id="kind-form" hidden><legend id="kf-title">Neue Art</legend>
-          <div class="row"><label for="kf-label">Name</label>
-            <input type="text" id="kf-label" maxlength="40" placeholder="z. B. Filmmusik, Musical, Volkslied"></div>
-          <div class="row"><label>Farbe</label>
-            <div class="swatches" id="kf-swatches">${[...ACCENTS, ...Sheet.EXTRA_ACCENTS].map((c) =>
-              `<button type="button" class="swatch" data-c="${c}" style="background:${c}" aria-label="Farbe ${c}"></button>`).join("")}
-              <input type="color" id="kf-color" value="#6B3FA0" aria-label="Eigene Farbe"></div></div>
-          <div class="row"><label for="kf-base">Verhält sich wie</label>
-            <select id="kf-base">${["klassik", "pop", "jazz", "sonstiges"].map((k) =>
-              `<option value="${k}">${esc(GENRES[k].label)}</option>`).join("")}</select>
-            <span class="hint">Bestimmt, wie „Automatisch ausfüllen“ in Wikipedia sucht und ob bei „Versionen suchen“ wie bei Klassik nach einer bestimmten Aufnahme gefragt wird.</span></div>
-          <div class="row"><label for="kf-fields">Angaben – eine pro Zeile</label>
-            <textarea id="kf-fields" rows="6" spellcheck="false"></textarea>
-            <span class="hint">Mit „*“ am Ende steht eine Angabe über die ganze Breite (z. B. „Komponist:in *“). Änderungen gelten für neue Blätter; bestehende behalten ihre Angaben.</span></div>
-          <div class="set-actions"><button type="button" class="btn btn-small btn-ghost" id="kf-cancel">Abbrechen</button>
-            <button type="button" class="btn btn-small btn-primary" id="kf-ok">Übernehmen und speichern</button></div>
-          <span class="hint" id="kf-msg"></span>
-        </fieldset>`,
-
       hilfe: `
         <p>Stück der Woche, Version ${esc(APP_VERSION)}.</p>
         <p class="hint">Installiert in: <code>${esc(s.app_dir_effective || "")}</code><br>
@@ -1831,7 +1879,6 @@
             gemini_key: $("#ai-gkey", dlg).value,
             apple_shortcut: $("#ai-apple", dlg).value,
             update_auto: $("#set-upd-auto", dlg).checked ? "1" : "0",
-            custom_kinds: JSON.stringify(kinds),
             gemini_model: $("#ai-gmodel", dlg).value,
             anthropic_model: $("#ai-amodel", dlg).value,
             openai_preset: $("#ai-preset", dlg).value,
@@ -2109,106 +2156,6 @@
           $("#ai-prompt", dlg).value = info.default_prompt;
           setInfo(isDirty() ? "Nicht gespeicherte Änderungen" : "");
         };
-
-        // Arten: Liste, Formular, Speichern
-        const kindList = $("#kind-list", dlg), kindForm = $("#kind-form", dlg);
-        let editing = null; // Schlüssel der bearbeiteten Art oder null für eine neue
-        let pickedColor = Sheet.EXTRA_ACCENTS[0];
-        const fieldsToText = (fields) => fields.map(([n, wide]) => n + (wide ? " *" : "")).join("\n");
-        const textToFields = (text) => text.split("\n").map((l) => l.trim()).filter(Boolean)
-          .map((l) => [l.replace(/\s*\*$/, "").trim(), /\*$/.test(l)]).filter(([n]) => n);
-        const usage = (key) => state.list.filter((x) => x.kind === key).length;
-        const renderKinds = () => {
-          const builtin = ["klassik", "pop", "jazz", "sonstiges"].map((k) =>
-            `<li class="builtin"><span class="dot" style="background:${GENRES[k].accent}"></span><b>${esc(GENRES[k].label)}</b>
-             <span class="hint">eingebaut</span></li>`).join("");
-          kindList.innerHTML = builtin + kinds.map((k) => {
-            const n = usage(k.key);
-            return `<li><span class="dot" style="background:${esc(k.accent)}"></span><b>${esc(k.label)}</b>
-              <span class="hint">wie ${esc((GENRES[k.base] || GENRES.sonstiges).label)} · ${k.fields.length} Angaben${n ? ` · ${n} ${n === 1 ? "Blatt" : "Blätter"}` : ""}</span>
-              <span class="kind-btns"><button type="button" class="btn btn-small btn-ghost" data-edit="${esc(k.key)}">Bearbeiten</button>
-              <button type="button" class="btn btn-small btn-ghost btn-danger" data-del="${esc(k.key)}">Löschen</button></span></li>`;
-          }).join("");
-          kindList.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => openKindForm(b.dataset.edit)));
-          kindList.querySelectorAll("[data-del]").forEach((b) => (b.onclick = () => deleteKind(b.dataset.del, b)));
-        };
-        const syncKindSwatches = () => {
-          dlg.querySelectorAll("#kf-swatches .swatch").forEach((b) =>
-            b.setAttribute("aria-pressed", String(b.dataset.c.toLowerCase() === pickedColor.toLowerCase())));
-          $("#kf-color", dlg).value = pickedColor;
-        };
-        const openKindForm = (key) => {
-          editing = key || null;
-          const k = kinds.find((x) => x.key === key);
-          $("#kf-title", dlg).textContent = k ? `„${k.label}“ bearbeiten` : "Neue Art";
-          $("#kf-label", dlg).value = k ? k.label : "";
-          $("#kf-base", dlg).value = k ? k.base : "sonstiges";
-          $("#kf-fields", dlg).value = fieldsToText(k ? k.fields : GENRES.sonstiges.fields);
-          $("#kf-fields", dlg).dataset.touched = k ? "1" : "";
-          const used = kinds.map((x) => x.accent.toLowerCase());
-          pickedColor = k ? k.accent : (Sheet.EXTRA_ACCENTS.find((c) => !used.includes(c.toLowerCase())) || Sheet.EXTRA_ACCENTS[0]);
-          syncKindSwatches();
-          $("#kf-msg", dlg).textContent = "";
-          kindForm.hidden = false;
-          $("#kind-actions", dlg).hidden = true;
-          $("#kf-label", dlg).focus();
-        };
-        const closeKindForm = () => { kindForm.hidden = true; $("#kind-actions", dlg).hidden = false; editing = null; };
-        dlg.querySelectorAll("#kf-swatches .swatch").forEach((b) => (b.onclick = () => { pickedColor = b.dataset.c; syncKindSwatches(); }));
-        $("#kf-color", dlg).oninput = (e) => { pickedColor = e.target.value; syncKindSwatches(); };
-        $("#kf-fields", dlg).oninput = (e) => { e.target.dataset.touched = "1"; };
-        $("#kf-base", dlg).onchange = (e) => {
-          // Angaben der Grundlage vorschlagen, solange noch nichts selbst eingetragen wurde
-          if (!$("#kf-fields", dlg).dataset.touched) $("#kf-fields", dlg).value = fieldsToText(GENRES[e.target.value].fields);
-        };
-        $("#kind-add", dlg).onclick = () => openKindForm(null);
-        $("#kf-cancel", dlg).onclick = closeKindForm;
-        const saveKinds = async (msgEl, text) => {
-          try {
-            await save();
-            kinds = parseKinds(state.settings.custom_kinds);
-            baseline = fingerprint();
-            renderKinds();
-            setInfo(text, "var(--ok)");
-            return true;
-          } catch (e) {
-            msgEl.style.color = "var(--danger)";
-            msgEl.textContent = e.message;
-            return false;
-          }
-        };
-        $("#kf-ok", dlg).onclick = async () => {
-          const label = $("#kf-label", dlg).value.replace(/\s+/g, " ").trim();
-          const fields = textToFields($("#kf-fields", dlg).value);
-          const msg = $("#kf-msg", dlg);
-          msg.style.color = "var(--danger)";
-          if (!label) { msg.textContent = "Bitte einen Namen eintragen."; return; }
-          const clash = Object.entries(GENRES).find(([k, g]) => k !== editing && g.label.toLowerCase() === label.toLowerCase());
-          if (clash) { msg.textContent = `Eine Art „${label}“ gibt es schon.`; return; }
-          if (!fields.length) { msg.textContent = "Bitte mindestens eine Angabe eintragen."; return; }
-          const entry = { label, accent: pickedColor, base: $("#kf-base", dlg).value, fields };
-          if (editing) {
-            Object.assign(kinds.find((x) => x.key === editing), entry);
-          } else {
-            const slug = label.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
-              .replace(/ß/g, "ss").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30) || "art";
-            kinds.push({ key: `k-${slug}-${Math.random().toString(36).slice(2, 6)}`, ...entry });
-          }
-          if (await saveKinds(msg, `✓ Art „${label}“ gespeichert – sie steht jetzt bei „+ Neues Blatt“ zur Wahl.`)) closeKindForm();
-        };
-        const deleteKind = async (key, btn) => {
-          const k = kinds.find((x) => x.key === key);
-          const n = usage(key);
-          if (btn.dataset.sure !== "1") {
-            btn.dataset.sure = "1";
-            btn.textContent = n ? `Wirklich löschen? (${n === 1 ? "1 Blatt bleibt" : n + " Blätter bleiben"} erhalten)` : "Wirklich löschen?";
-            return;
-          }
-          kinds = kinds.filter((x) => x.key !== key);
-          await saveKinds($("#kf-msg", dlg), `Art „${k.label}“ gelöscht.`);
-        };
-        renderKinds();
-        if (opts.newKind) openKindForm(null);
 
         // Vorgaben (z. B. Adresse des KI-Dienstes) zählen nicht als Änderung
         baseline = fingerprint();

@@ -9,6 +9,7 @@ Mit  --browser  öffnet sie sich stattdessen als Tab im Standardbrowser.
 
 import json
 import signal
+import subprocess
 import sys
 import time
 import urllib.request
@@ -65,6 +66,13 @@ def open_window(url: str):
         if proc is not None:
             return proc
         print("Kein Chrome/Chromium-Browser gefunden – öffne die App im Standardbrowser.")
+    if sys.platform == "darwin":
+        # Auf dem Mac zuverlässiger als webbrowser (das über AppleScript geht)
+        try:
+            subprocess.run(["/usr/bin/open", url], timeout=15, check=True)
+            return None
+        except Exception as exc:
+            print(f"„open“ hat nicht geklappt ({exc}) – versuche es anders.")
     webbrowser.open(url)
     return None
 

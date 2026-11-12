@@ -94,6 +94,9 @@ Deine Blätter und Einstellungen bleiben bei einem Update erhalten." "Abbrechen"
       if [ "$ok" = 1 ]; then
         rm -rf "$HOME/Applications/$APP_NAME.app" 2>/dev/null  # ältere Version im Benutzerordner
         say "In Programme installiert: $TARGET"
+        # Anmelden, solange die neue App noch nicht läuft (nicht erst beim Start)
+        register_app "$TARGET"
+        echo "$(/usr/bin/defaults read "$TARGET/Contents/Info" CFBundleVersion 2>/dev/null) $TARGET" > "$SUPPORT/angemeldet"
         # Abbild auswerfen (gelingt nur, wenn es nicht mehr benutzt wird)
         VOL="$(echo "$SRC_APP" | sed -n 's|^\(/Volumes/[^/]*\)/.*|\1|p')"
         [ -n "$VOL" ] && (sleep 3; /usr/sbin/diskutil eject "$VOL" >/dev/null 2>&1) &
@@ -111,8 +114,9 @@ esac
 MARK="$SUPPORT/angemeldet"
 STAMP="$(/usr/bin/defaults read "$HERE/Contents/Info" CFBundleVersion 2>/dev/null) $HERE"
 if [ "$(cat "$MARK" 2>/dev/null)" != "$STAMP" ]; then
-  register_app "$HERE"
-  echo "$STAMP" > "$MARK"
+  # Nicht während macOS die App gerade startet (das kann die Meldung „ist nicht mehr
+  # geöffnet“ auslösen), sondern etwas später im Hintergrund.
+  ( sleep 20; register_app "$HERE"; echo "$STAMP" > "$MARK" ) >/dev/null 2>&1 &
 fi
 
 # ------------------------------------------------------------ 2. Python finden oder installieren
