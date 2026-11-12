@@ -11,7 +11,7 @@ pkgver=0.6.1.2
 pkgrel=1
 pkgdesc="Übersichtsblätter „Stück der Woche“ für den Musikunterricht"
 arch=('any')
-license=('LicenseRef-private' 'MIT')
+license=('EUPL-1.2' 'MIT')
 depends=('python')
 optdepends=(
   'chromium: eigenes App-Fenster und PDF-Export (sonst lädt die App einen unsichtbaren Chromium)'
@@ -57,6 +57,7 @@ Categories=Education;Office;
 StartupNotify=false
 EOF
 
+  install -Dm644 "$_src/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
   # Lizenz des mitgelieferten QR-Code-Erzeugers (aus ReportLab)
   install -Dm644 /dev/stdin "$pkgdir/usr/share/licenses/$pkgname/qrencoder-MIT.txt" <<'EOF'
 app/qrencoder.py stammt aus ReportLab (reportlab/graphics/barcode/qrencoder.py).

@@ -24,7 +24,7 @@ from app import VERSION  # noqa: E402
 
 # Was zur Programm-ZIP gehört (alles andere – Tests, .git, dist – bleibt draußen)
 INCLUDE = ["app", "web", "paket", "stueck_der_woche.py", "install.sh", "deinstallieren.sh",
-           "start.sh", "start.command", "LIESMICH.md", "README.md"]
+           "start.sh", "start.command", "LIESMICH.md", "README.md", "LICENSE"]
 SKIP_PARTS = {"__pycache__", ".DS_Store", "src", "pkg"}
 # Immer ausführbar – auch wenn die Rechte beim Hochladen über die GitHub-Webseite verloren gingen
 EXECUTABLE = {"install.sh", "deinstallieren.sh", "start.sh", "start.command", "stueck_der_woche.py",

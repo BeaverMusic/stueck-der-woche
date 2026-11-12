@@ -187,7 +187,7 @@ def install() -> dict:
         new.mkdir()
         for item in ("app", "web"):
             shutil.copytree(src / item, new / item)
-        for item in ("stueck_der_woche.py", "LIESMICH.md", "deinstallieren.sh"):
+        for item in ("stueck_der_woche.py", "LIESMICH.md", "deinstallieren.sh", "LICENSE"):
             if (src / item).exists():
                 shutil.copy2(src / item, new / item)
         # Austausch: alter Ordner beiseite, neuer an seine Stelle, alter weg

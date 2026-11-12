@@ -155,6 +155,7 @@ if [ "$SRC" != "$DEST" ]; then
   rm -rf "$TMP"
   mkdir -p "$TMP"
   cp -R "$SRC/app" "$SRC/web" "$SRC/stueck_der_woche.py" "$SRC/LIESMICH.md" "$SRC/deinstallieren.sh" "$TMP/"
+  [ -f "$SRC/LICENSE" ] && cp "$SRC/LICENSE" "$TMP/"
   find "$TMP" -name "__pycache__" -type d -prune -exec rm -rf {} + 2>/dev/null || true
   chmod +x "$TMP/deinstallieren.sh"
   # Erst vollständig kopieren, dann austauschen – so bleibt nie eine halbe Version zurück.

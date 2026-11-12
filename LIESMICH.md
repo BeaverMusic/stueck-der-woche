@@ -431,3 +431,8 @@ mitschicken, dann lässt sich der Fehler genau finden.
   `~/.config/stueck-der-woche/chromium` (Linux) bzw.
   `~/Library/Application Support/StueckDerWoche/chromium` (macOS).
   Zum Entfernen einfach diesen Ordner löschen.
+
+## Lizenz
+
+Stück der Woche steht unter der European Union Public Licence (EUPL) v. 1.2,
+siehe Datei `LICENSE`. Copyright © 2026 BeaverMusic.

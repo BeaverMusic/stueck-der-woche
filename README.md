@@ -31,3 +31,17 @@ Installierte Apps melden neue Versionen selbst und spielen sie auf Wunsch ein.
 2. Auf GitHub **Actions → „Veröffentlichung“ → „Run workflow“** klicken. Nach etwa
    drei Minuten liegen .dmg, ZIP und Prüfsummen unter „Releases“ – und alle
    installierten Apps bieten das Update an.
+
+## Lizenz
+
+Copyright © 2026 BeaverMusic
+
+Lizenziert unter der **European Union Public Licence (EUPL) v. 1.2** – siehe
+[LICENSE](LICENSE). Die App darf genutzt, verändert und weitergegeben werden;
+wer veränderte Fassungen weitergibt, muss deren Quellcode ebenfalls unter der
+EUPL (oder einer der darin genannten verträglichen Lizenzen) bereitstellen.
+Die EUPL gibt es in allen EU-Amtssprachen mit gleicher Gültigkeit, auch auf
+Deutsch: <https://interoperable-europe.ec.europa.eu/collection/eupl/eupl-text-eupl-12>
+
+Enthaltener fremder Code: `app/qrencoder.py` (aus ReportLab) steht unter der
+MIT-Lizenz; der Hinweis dazu steht in der Datei selbst.

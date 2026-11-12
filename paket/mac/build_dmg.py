@@ -94,7 +94,7 @@ def build_app(target: Path) -> Path:
     ignore = shutil.ignore_patterns("__pycache__", "*.pyc", ".DS_Store")
     shutil.copytree(ROOT / "app", prog / "app", ignore=ignore)
     shutil.copytree(ROOT / "web", prog / "web", ignore=ignore)
-    for name in ("stueck_der_woche.py", "LIESMICH.md", "deinstallieren.sh"):
+    for name in ("stueck_der_woche.py", "LIESMICH.md", "deinstallieren.sh", "LICENSE"):
         shutil.copy2(ROOT / name, prog / name)
     (prog / "deinstallieren.sh").chmod(0o755)
     launcher = contents / "MacOS" / "StueckDerWoche"
