@@ -9,7 +9,7 @@ Die Blätter lassen sich als PDF ausgeben, einzeln oder zu zweit auf A4.
 
 Unter **[Releases](../../releases/latest)**:
 
-- **Mac:** `Stück der Woche <Version>.dmg` öffnen und die App doppelklicken – sie
+- **Mac:** `Stueck-der-Woche-<Version>.dmg` öffnen und die App doppelklicken – sie
   kopiert sich selbst in „Programme“. Beim ersten Öffnen ggf. unter
   Systemeinstellungen → Datenschutz & Sicherheit „Dennoch öffnen“ wählen.
 - **Linux (z. B. CachyOS/Arch):** `stueck-der-woche-<Version>.zip` entpacken und im
@@ -22,6 +22,8 @@ Installierte Apps melden neue Versionen selbst und spielen sie auf Wunsch ein.
 - Läuft lokal auf dem eigenen Rechner; braucht nur Python 3 (wird auf dem Mac bei
   Bedarf automatisch installiert).
 - API-Schlüssel (YouTube, Spotify, KI) werden nur lokal gespeichert, nie im Code.
+- Die App beantwortet nur Anfragen ihres eigenen Fensters; Schriften liegen bei
+  (keine Abfrage bei Google Fonts).
 - Ausführliche Anleitung: [LIESMICH.md](LIESMICH.md) · Änderungen: [NEUERUNGEN.md](NEUERUNGEN.md)
 
 ## Neue Version veröffentlichen
@@ -44,4 +46,6 @@ Die EUPL gibt es in allen EU-Amtssprachen mit gleicher Gültigkeit, auch auf
 Deutsch: <https://interoperable-europe.ec.europa.eu/collection/eupl/eupl-text-eupl-12>
 
 Enthaltener fremder Code: `app/qrencoder.py` (aus ReportLab) steht unter der
-MIT-Lizenz; der Hinweis dazu steht in der Datei selbst.
+MIT-Lizenz; der Hinweis dazu steht in der Datei selbst. Die Schriften in
+`web/fonts` stehen unter der SIL Open Font License 1.1 (siehe
+`web/fonts/LIZENZ.txt`).

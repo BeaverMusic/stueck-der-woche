@@ -22,7 +22,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Bestätigung prüfen
-        run: test "${{ inputs.bestaetigung }}" = "LÖSCHEN" || { echo "::error::Nicht bestätigt – nichts gelöscht."; exit 1; }
+        env:
+          EINGABE: ${{ inputs.bestaetigung }}  # als Variable übergeben, nicht in den Befehl einsetzen
+        run: test "$EINGABE" = "LÖSCHEN" || { echo "::error::Nicht bestätigt – nichts gelöscht."; exit 1; }
       - name: Löschen
         env:
           GH_TOKEN: ${{ github.token }}

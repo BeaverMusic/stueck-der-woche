@@ -2,7 +2,7 @@
 """Baut alle Dateien einer Veröffentlichung in den Ordner dist/:
 
     stueck-der-woche-<Version>.zip   Programm (für Updates, Linux und install.sh)
-    Stück der Woche <Version>.dmg    Mac-Installationsabbild
+    Stueck-der-Woche-<Version>.dmg   Mac-Installationsabbild
     SHA256SUMS.txt                   Prüfsummen (die Update-Funktion prüft damit)
 
 Aufruf:  python3 paket/build_release.py

@@ -30,7 +30,18 @@ IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 # ---------------------------------------------------------------- Ordner
 
 
+_documents_cache: list = []
+
+
 def _documents_dir() -> Path:
+    """Dokumente-Ordner des Benutzers – einmal ermitteln genügt (unter Linux wird dafür
+    ein Hilfsprogramm gefragt)."""
+    if not _documents_cache:
+        _documents_cache.append(_find_documents_dir())
+    return _documents_cache[0]
+
+
+def _find_documents_dir() -> Path:
     home = Path.home()
     if sys.platform.startswith("linux"):
         try:
@@ -69,10 +80,11 @@ DEFAULT_SETTINGS = {
     "ai_provider": "",  # leer = Standard (Google Gemini bzw. Claude-Abo, siehe ai.default_provider)
     "gemini_key": "",
     "gemini_model": "",
-    "apple_shortcut": "",
-    "custom_kinds": "[]",  # eigene Arten von Stücken (JSON, siehe _clean_kinds)
+    "apple_shortcut": "",  # Name des Kurzbefehls für Apple Intelligence (leer = „Stück der Woche KI“)
+    "custom_kinds": "[]",  # eigene und angepasste Typen von Stücken (JSON, siehe _clean_kinds)
     "update_auto": "1",  # beim Start nach neuen Versionen auf GitHub schauen
-    "update_repo": "",  # anderes GitHub-Repository („Konto/Name“), leer = Standard  # Name des Kurzbefehls für Apple Intelligence (leer = „Stück der Woche KI“)  # "claude_code" | "anthropic" | "openai" (leer = automatisch)
+    "update_repo": "",  # anderes GitHub-Repository („Konto/Name“), leer = Standard
+    "theme": "",  # Erscheinungsbild der App: "" = wie das System, "light", "dark"
     "claude_model": "",  # für Claude Code, leer = Standard
     "claude_path": "",  # Pfad zu „claude“, leer = automatisch suchen
     "anthropic_key": "",
@@ -103,8 +115,25 @@ SIZE_LIMITS = {"size_title": (16, 40), "size_fields": (7, 13), "size_info": (7, 
 BASE_KINDS = ("klassik", "pop", "jazz", "sonstiges")
 
 
+def _clean_fields(value) -> list:
+    """Angaben (Felder) eines Typs: kurze Namen, höchstens zwölf, keine doppelten."""
+    fields, seen = [], set()
+    for f in value[:12] if isinstance(value, list) else []:
+        if isinstance(f, (list, tuple)) and f:
+            name, wide = f[0], (f[1] if len(f) > 1 else False)
+        elif isinstance(f, dict):
+            name, wide = f.get("label", ""), f.get("wide", False)
+        else:
+            continue
+        name = " ".join(str(name).split())[:30]
+        if name and name.lower() not in seen:
+            fields.append([name, bool(wide)])
+            seen.add(name.lower())
+    return fields
+
+
 def _clean_kinds(value: str) -> str:
-    """Eigene Arten prüfen: feste Schlüssel, kurze Texte, gültige Farbe, bekannte Grundlage."""
+    """Typen prüfen: feste Schlüssel, kurze Texte, gültige Farbe, bekannte Grundlage."""
     try:
         data = json.loads(value or "[]")
     except ValueError:
@@ -116,12 +145,15 @@ def _clean_kinds(value: str) -> str:
         key = str(item.get("key", ""))
         label = " ".join(str(item.get("label", "")).split())[:40]
         if key in BASE_KINDS and key not in seen:
-            # Eingebauter Typ: nur Name, Farbe und „ausgeblendet“ lassen sich ändern
+            # Eingebauter Typ: Name, Farbe, Angaben und „ausgeblendet“ lassen sich ändern
             entry = {"key": key, "hidden": bool(item.get("hidden"))}
             if label:
                 entry["label"] = label
             if re.fullmatch(r"#[0-9a-fA-F]{6}", str(item.get("accent", ""))):
                 entry["accent"] = str(item["accent"])
+            fields = _clean_fields(item.get("fields"))
+            if fields:
+                entry["fields"] = fields
             out.append(entry)
             seen.add(key)
             continue
@@ -131,17 +163,7 @@ def _clean_kinds(value: str) -> str:
         if not re.fullmatch(r"#[0-9a-fA-F]{6}", accent):
             accent = "#1F3A5F"
         base = item.get("base") if item.get("base") in BASE_KINDS else "sonstiges"
-        fields = []
-        for f in item.get("fields", [])[:12] if isinstance(item.get("fields"), list) else []:
-            if isinstance(f, (list, tuple)) and f:
-                name, wide = f[0], (f[1] if len(f) > 1 else False)
-            elif isinstance(f, dict):
-                name, wide = f.get("label", ""), f.get("wide", False)
-            else:
-                continue
-            name = " ".join(str(name).split())[:30]
-            if name:
-                fields.append([name, bool(wide)])
+        fields = _clean_fields(item.get("fields"))
         out.append({"key": key, "label": label, "accent": accent, "base": base,
                     "fields": fields or [["Künstler:in", True]]})
         seen.add(key)
@@ -156,7 +178,7 @@ def custom_kinds() -> list:
 
 
 def base_kind(kind: str) -> str:
-    """Eigene Arten verhalten sich wie eine der eingebauten (für Suche und Aufnahmen)."""
+    """Eigene Typen verhalten sich wie eine der eingebauten (für Suche und Aufnahmen)."""
     if kind in BASE_KINDS:
         return kind
     return next((k["base"] for k in custom_kinds() if k.get("key") == kind), "sonstiges")
@@ -172,6 +194,8 @@ def _clean_setting(key: str, value: str) -> str:
     """Prüft Gestaltungswerte – sie landen später im Blatt, daher nur Bekanntes zulassen."""
     if key == "custom_kinds":
         return _clean_kinds(value)
+    if key == "theme":
+        return value if value in ("light", "dark") else ""
     if key == "font_head":
         return value if value in HEAD_FONTS else ""
     if key in ("font_body", "font_info"):
@@ -187,44 +211,47 @@ def _clean_setting(key: str, value: str) -> str:
 
 
 _settings_cache: dict = {"key": None, "value": None}
+_settings_lock = threading.RLock()  # zwei gleichzeitige Speichervorgänge dürfen sich nicht überschreiben
 
 
 def load_settings() -> dict:
     """Liest die Einstellungen – aus dem Speicher, solange sich die Datei nicht geändert hat."""
     path = config_dir() / "settings.json"
-    try:
-        st = path.stat()
-        key = (str(path), st.st_mtime_ns, st.st_size)
-    except OSError:
-        key = (str(path), None, None)
-    if _settings_cache["key"] == key and _settings_cache["value"] is not None:
-        return dict(_settings_cache["value"])
-    settings = dict(DEFAULT_SETTINGS)
-    if key[1] is not None:
+    with _settings_lock:
         try:
-            settings.update(json.loads(path.read_text("utf-8")))
-        except Exception:
-            pass
-    _settings_cache.update(key=key, value=dict(settings))
-    return settings
+            st = path.stat()
+            key = (str(path), st.st_mtime_ns, st.st_size)
+        except OSError:
+            key = (str(path), None, None)
+        if _settings_cache["key"] == key and _settings_cache["value"] is not None:
+            return dict(_settings_cache["value"])
+        settings = dict(DEFAULT_SETTINGS)
+        if key[1] is not None:
+            try:
+                settings.update(json.loads(path.read_text("utf-8")))
+            except Exception:
+                pass
+        _settings_cache.update(key=key, value=dict(settings))
+        return settings
 
 
 def save_settings(new: dict) -> dict:
-    settings = load_settings()
-    for key in DEFAULT_SETTINGS:
-        if key in new and isinstance(new[key], str):
-            settings[key] = _clean_setting(key, new[key].strip()[:20000])
-    path = config_dir() / "settings.json"
-    _private_dir(path.parent)
-    tmp = path.with_suffix(".tmp")
-    # Die Datei enthält API-Schlüssel: nur für den eigenen Benutzer lesbar
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        f.write(json.dumps(settings, ensure_ascii=False, indent=2))
-    os.chmod(tmp, 0o600)
-    tmp.replace(path)
-    _settings_cache.update(key=None, value=None)
-    return settings
+    with _settings_lock:
+        settings = load_settings()
+        for key in DEFAULT_SETTINGS:
+            if key in new and isinstance(new[key], str):
+                settings[key] = _clean_setting(key, new[key].strip()[:20000])
+        path = config_dir() / "settings.json"
+        _private_dir(path.parent)
+        tmp = path.with_suffix(".tmp")
+        # Die Datei enthält API-Schlüssel: nur für den eigenen Benutzer lesbar
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(json.dumps(settings, ensure_ascii=False, indent=2))
+        os.chmod(tmp, 0o600)
+        tmp.replace(path)
+        _settings_cache.update(key=None, value=None)
+        return settings
 
 
 def _private_dir(d: Path) -> None:
@@ -325,6 +352,7 @@ def list_sheets() -> list[dict]:
             "person": _person(s),
             "kind": s.get("kind", ""),
             "updated": s.get("updated", ""),
+            "created": s.get("created", ""),
         }
         _summary_cache[key] = ((st.st_mtime_ns, st.st_size), summary)
         result.append(dict(summary))
@@ -342,10 +370,31 @@ def _person(sheet: dict) -> str:
     return ""
 
 
+CODE_VERSION = 2  # 2 = QR-Codes mit dem Rand nach Norm (vier Kästchen)
+
+
+def _refresh_codes(sheet: dict) -> None:
+    """Blätter aus älteren Versionen haben QR-Codes mit schmalerem Rand. Sie werden beim
+    Öffnen (und damit auch beim PDF-Export) aus dem gespeicherten Link neu erzeugt."""
+    if sheet.get("code_v") == CODE_VERSION:
+        return
+    from . import codes
+    stored, links = sheet.get("codes"), sheet.get("links")
+    if isinstance(stored, dict) and isinstance(links, dict):
+        for service in ("youtube", "apple"):
+            if stored.get(service) and links.get(service):
+                try:
+                    stored[service] = codes.qr_svg(str(links[service]))
+                except Exception:
+                    pass
+    sheet["code_v"] = CODE_VERSION
+
+
 def load_sheet(sheet_id: str) -> dict:
     f = sheet_dir(sheet_id) / "sheet.json"
     sheet = json.loads(f.read_text("utf-8"))
     sheet["id"] = sheet_id
+    _refresh_codes(sheet)
     return sheet
 
 
@@ -383,14 +432,81 @@ def duplicate_sheet(sheet_id: str) -> dict:
     return save_sheet(sheet)
 
 
-def delete_sheet(sheet_id: str) -> None:
+def trash_dir() -> Path:
+    return data_dir() / "papierkorb"
+
+
+def delete_sheet(sheet_id: str) -> str:
+    """Verschiebt das Blatt in den Papierkorb. Gibt den Namen des Eintrags dort zurück."""
     src = sheet_dir(sheet_id)
     with _lock:
         if not src.exists():
-            return
-        trash = data_dir() / "papierkorb"
+            return ""
+        trash = trash_dir()
         trash.mkdir(exist_ok=True)
-        shutil.move(str(src), str(trash / f"{sheet_id}-{uuid.uuid4().hex[:4]}"))
+        name = f"{sheet_id}-{uuid.uuid4().hex[:4]}"
+        shutil.move(str(src), str(trash / name))
+        try:
+            os.utime(trash / name)  # Zeitpunkt des Löschens
+        except OSError:
+            pass
+        return name
+
+
+def _trash_entry(name: str) -> Path:
+    if not ID_RE.match(name or ""):
+        raise ValueError("Ungültiger Eintrag im Papierkorb")
+    folder = trash_dir() / name
+    if not folder.is_dir():
+        raise ValueError("Dieses Blatt liegt nicht mehr im Papierkorb.")
+    return folder
+
+
+def list_trash() -> list[dict]:
+    """Gelöschte Blätter, zuletzt gelöschte zuerst."""
+    result = []
+    trash = trash_dir()
+    if not trash.is_dir():
+        return result
+    for folder in trash.iterdir():
+        f = folder / "sheet.json"
+        if not ID_RE.match(folder.name) or not f.is_file():
+            continue
+        try:
+            s = json.loads(f.read_text("utf-8"))
+            deleted = datetime.fromtimestamp(folder.stat().st_mtime).isoformat(timespec="seconds")
+        except Exception:
+            continue
+        result.append({"name": folder.name, "short_title": s.get("short_title", ""), "title": s.get("title", ""),
+                       "person": _person(s), "kind": s.get("kind", ""), "deleted": deleted})
+    result.sort(key=lambda s: s["deleted"], reverse=True)
+    return result
+
+
+def restore_sheet(name: str) -> dict:
+    """Holt ein Blatt aus dem Papierkorb zurück."""
+    with _lock:
+        src = _trash_entry(name)
+        sheet_id = name[:-5] if re.search(r"-[0-9a-f]{4}$", name) else name
+        if not ID_RE.match(sheet_id) or (sheets_dir() / sheet_id).exists():
+            sheet_id = _new_id(json.loads((src / "sheet.json").read_text("utf-8")).get("title", ""))
+        shutil.move(str(src), str(sheets_dir() / sheet_id))
+    return load_sheet(sheet_id)
+
+
+def purge_trash(name: str = "") -> int:
+    """Löscht einen Eintrag (oder mit leerem Namen alle) endgültig. Gibt die Anzahl zurück."""
+    with _lock:
+        if name:
+            shutil.rmtree(_trash_entry(name))
+            return 1
+        count = 0
+        trash = trash_dir()
+        for folder in list(trash.iterdir()) if trash.is_dir() else []:
+            if folder.is_dir() and ID_RE.match(folder.name):
+                shutil.rmtree(folder, ignore_errors=True)
+                count += 1
+        return count
 
 
 def save_image(sheet_id: str, ext: str, data: bytes) -> str:
@@ -419,6 +535,29 @@ def image_type(data: bytes) -> str:
     if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
         return ".webp"
     return ""
+
+
+# Zwischenspeicher: so viele Tage bleiben Einträge höchstens liegen
+CACHE_KEEP_DAYS = {"wiki": 60, "media": 30, "uebersetzung": 365, "spotify-codes": 365}
+
+
+def prune_cache() -> int:
+    """Entfernt veraltete Einträge aus dem Zwischenspeicher (läuft beim Start im Hintergrund)."""
+    import time
+    removed = 0
+    now = time.time()
+    for sub, days in CACHE_KEEP_DAYS.items():
+        d = config_dir() / "cache" / sub
+        if not d.is_dir():
+            continue
+        for f in d.rglob("*"):
+            try:
+                if f.is_file() and now - f.stat().st_mtime > days * 86400:
+                    f.unlink()
+                    removed += 1
+            except OSError:
+                pass
+    return removed
 
 
 def log_file() -> Path:

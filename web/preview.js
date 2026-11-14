@@ -16,7 +16,7 @@
   function draw(msg) {
     const d = Sheet.design(msg.settings, msg.sheet);
     const fonts = Sheet.loadFonts(d);
-    const html = Sheet.render(msg.sheet, { preview: true, headerRight: msg.headerRight, design: msg.settings });
+    const html = Sheet.render(msg.sheet, { preview: true, headerRight: msg.headerRight, design: msg.settings, assetKey: msg.assetKey });
     if (html !== lastHtml) { // nur neu zeichnen, wenn sich etwas geändert hat
       stage.innerHTML = html;
       lastHtml = html;

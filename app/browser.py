@@ -75,7 +75,8 @@ def find_browser() -> str | None:
 
 
 def open_app_window(url: str) -> subprocess.Popen | None:
-    """Öffnet die App als eigenes Fenster ohne Adressleiste."""
+    """Öffnet die App als eigenes Fenster ohne Adressleiste. ``url`` ist die Adresse der
+    Startdatei (file://…) – so steht der Zugangsschlüssel nicht in der Befehlszeile."""
     exe = find_browser()
     if not exe:
         return None
@@ -179,8 +180,10 @@ class _Pipe:
             self.proc.kill()
 
 
-def print_pdf(url: str, target: Path, width_mm: float, height_mm: float) -> None:
-    """Lädt die Seite unsichtbar, wartet bis alles fertig ist, und speichert sie als PDF."""
+def print_pdf(url: str, target: Path, width_mm: float, height_mm: float,
+              headers: dict | None = None) -> None:
+    """Lädt die Seite unsichtbar, wartet bis alles fertig ist, und speichert sie als PDF.
+    ``headers`` werden jeder Anfrage der Seite mitgegeben (Zugangsschlüssel)."""
     exe = find_pdf_engine()
     if not exe:
         raise RuntimeError(NO_PDF_ENGINE)
@@ -190,6 +193,9 @@ def print_pdf(url: str, target: Path, width_mm: float, height_mm: float) -> None
             target_id = pipe.call("Target.createTarget", {"url": "about:blank"})["targetId"]
             session = pipe.call("Target.attachToTarget",
                                 {"targetId": target_id, "flatten": True})["sessionId"]
+            if headers:
+                pipe.call("Network.enable", {}, session)
+                pipe.call("Network.setExtraHTTPHeaders", {"headers": headers}, session)
             pipe.call("Page.navigate", {"url": url}, session)
             deadline = time.time() + 30
             while True:

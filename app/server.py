@@ -1,6 +1,8 @@
 """Kleiner lokaler Webserver: liefert die Oberfläche aus und stellt die API bereit.
 
 Er lauscht nur auf 127.0.0.1, ist also von anderen Rechnern nicht erreichbar.
+Alle Daten und Funktionen gibt es nur mit dem Zugangsschlüssel des eigenen
+App-Fensters (siehe zugang.py); frei abrufbar sind nur die Dateien der Oberfläche.
 """
 
 from __future__ import annotations
@@ -16,12 +18,12 @@ import traceback
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
-from . import VERSION, ai, browser, codes, media, pdf_export, picker, storage, update, wiki
+from . import VERSION, ai, browser, chromium, codes, media, pdf_export, picker, storage, update, wiki, zugang
 
 # Lebenszeichen der geöffneten Oberfläche (zum automatischen Beenden)
-activity = {"last": time.time(), "bye": None, "seen": False, "quit": False}
+activity = {"last": time.time(), "bye": None, "seen": False, "quit": False, "own_window": False}
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 MAX_BODY = 20 * 1024 * 1024
@@ -32,8 +34,8 @@ DATA_URL_RE = re.compile(r"^data:image/(jpeg|jpg|png|webp|gif);base64,(.+)$", re
 CSP = "; ".join([
     "default-src 'self'",
     "script-src 'self'",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com",
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self'",
     "img-src 'self' data: blob: https://upload.wikimedia.org https://*.wikimedia.org https://i.ytimg.com "
     "https://*.scdn.co https://*.spotifycdn.com https://*.mzstatic.com",
     "connect-src 'self' https://upload.wikimedia.org",
@@ -110,6 +112,14 @@ class Handler(BaseHTTPRequestHandler):
         host = (self.headers.get("Host") or "").strip().lower()
         return host in (f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}")
 
+    def _authed(self) -> bool:
+        """Kommt die Anfrage aus dem eigenen App-Fenster (kennt sie den Zugangsschlüssel)?"""
+        return zugang.check(self.headers.get("X-App-Key", ""))
+
+    def _denied(self) -> None:
+        self._json({"error": "Dieses Fenster ist nicht mit der App verbunden – bitte „Stück der Woche“ "
+                             "über das App-Symbol öffnen.", "code": "zugang"}, 401)
+
     def _base_url(self) -> str:
         host, port = self.server.server_address[:2]
         return f"http://{host}:{port}"
@@ -120,12 +130,27 @@ class Handler(BaseHTTPRequestHandler):
         if not self._host_ok():
             return self._error("Nicht erlaubt", 403)
         try:
-            path = unquote(urlparse(self.path).path)
+            parsed = urlparse(self.path)
+            path = unquote(parsed.path)
+            query = parse_qs(parsed.query)
+            authed = self._authed()
             if path == "/":
                 return self._file(WEB_DIR / "index.html")
             if path == "/api/ping":
-                activity.update(last=time.time(), bye=None, seen=True)
-                return self._json({"ok": True, "version": VERSION})
+                if authed:  # nur das eigene Fenster zählt als Lebenszeichen
+                    activity.update(last=time.time(), bye=None, seen=True)
+                out = {"ok": True, "version": VERSION, "auth": authed}
+                nonce = (query.get("n") or [""])[0]
+                if re.fullmatch(r"[A-Za-z0-9_-]{16,64}", nonce):
+                    out["proof"] = zugang.proof(nonce)  # „hier läuft wirklich die eigene App“
+                return self._json(out)
+            m = re.fullmatch(r"/data/([a-z0-9-]+)/(bild\.[a-z]+)", path)
+            if m:
+                if not (authed or zugang.check_asset((query.get("k") or [""])[0])):
+                    return self._denied()
+                return self._file(storage.sheet_dir(m.group(1)) / m.group(2))
+            if path.startswith("/api/") and not authed:
+                return self._denied()
             if path == "/api/sheets":
                 return self._json(storage.list_sheets())
             m = re.fullmatch(r"/api/sheets/([a-z0-9-]+)", path)
@@ -139,10 +164,11 @@ class Handler(BaseHTTPRequestHandler):
                 s["pdf_engine_effective"] = browser.find_pdf_engine() or ""
                 s["app_dir_effective"] = str(WEB_DIR.parent)
                 s["update_repo_effective"] = update.repo()
+                s["asset_key"] = zugang.asset_key()
+                s["chromium_version"] = chromium.installed_version()
                 return self._json(s)
-            m = re.fullmatch(r"/data/([a-z0-9-]+)/(bild\.[a-z]+)", path)
-            if m:
-                return self._file(storage.sheet_dir(m.group(1)) / m.group(2))
+            if path == "/api/trash":
+                return self._json(storage.list_trash())
             target = (WEB_DIR / path.lstrip("/")).resolve()
             if WEB_DIR in target.parents:
                 return self._file(target)
@@ -155,16 +181,27 @@ class Handler(BaseHTTPRequestHandler):
             self._error(str(exc), 500)
 
     def do_POST(self):
-        # Eigener Header: Webseiten aus dem Internet können ihn nicht setzen.
-        if self.headers.get("X-App") != "1" or not self._host_ok():
+        if not self._host_ok():
             return self._error("Nicht erlaubt", 403)
         try:
             path = urlparse(self.path).path
+            if path == "/api/login":
+                # Einmal-Eintrittskarte gegen den Schlüssel tauschen (siehe zugang.new_ticket).
+                # Eigener Header: Webseiten aus dem Internet können ihn nicht setzen.
+                if self.headers.get("X-App") != "1":
+                    return self._error("Nicht erlaubt", 403)
+                key = zugang.redeem(str(self._body().get("ticket", "")))
+                return self._json({"key": key}) if key else self._denied()
+            if not self._authed():
+                return self._denied()
             body = self._body()
 
             if path == "/api/quit":
                 activity["quit"] = True  # eine neuere Version möchte übernehmen
                 return self._json({"ok": True})
+            if path == "/api/ticket":
+                # Für ein weiteres Fenster (zweiter Start der App), siehe stueck_der_woche.open_running
+                return self._json({"ticket": zugang.new_ticket()})
             if path == "/api/bye":
                 activity["bye"] = time.time()
                 return self._json({"ok": True})
@@ -175,11 +212,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json(storage.duplicate_sheet(m.group(1)))
             m = re.fullmatch(r"/api/sheets/([a-z0-9-]+)/delete", path)
             if m:
-                storage.delete_sheet(m.group(1))
-                return self._json({"ok": True})
+                return self._json({"ok": True, "trash": storage.delete_sheet(m.group(1))})
+            if path == "/api/trash/restore":
+                return self._json(storage.restore_sheet(str(body.get("name", ""))))
+            if path == "/api/trash/purge":
+                return self._json({"removed": storage.purge_trash(str(body.get("name", "")))})
             m = re.fullmatch(r"/api/sheets/([a-z0-9-]+)/image", path)
             if m:
-                dm = DATA_URL_RE.match(body.get("data_url", ""))
+                dm = DATA_URL_RE.match(str(body.get("data_url", "")))
                 if not dm:
                     return self._error("Bitte ein Bild (JPG, PNG, WebP, GIF) wählen")
                 ext = "." + dm.group(1).replace("jpeg", "jpg")
@@ -206,7 +246,7 @@ class Handler(BaseHTTPRequestHandler):
                     if d.exists():
                         removed += sum(1 for _ in d.rglob("*.json"))
                         shutil.rmtree(d, ignore_errors=True)
-                wiki._cache.clear()
+                wiki.clear_cache()
                 return self._json({"message": f"Zwischenspeicher geleert ({removed} Einträge). Suchen holen ab jetzt frische Daten."})
             if path == "/api/diagnose":
                 return self._json(wiki.diagnose())
@@ -233,6 +273,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/ai/apple-check":
                 name = str(body.get("name", "")).strip() or ai.DEFAULT_APPLE_SHORTCUT
                 return self._json({"exists": ai.apple_shortcut_exists(name), "name": name})
+            if path == "/api/ai/cancel":
+                return self._json({"cancelled": ai.cancel()})
             if path == "/api/ai/test":
                 return self._json({"message": ai.test()})
             if path == "/api/ai/models":
@@ -270,12 +312,12 @@ class Handler(BaseHTTPRequestHandler):
                 name = storage.save_image(m.group(1), ext, data)
                 return self._json({"file": name})
             if path == "/api/code":
-                svg = codes.make_code(body.get("service", ""), body.get("url", ""))
-                return self._json({"svg": svg})
+                svg, note = codes.make_code(str(body.get("service", "")), str(body.get("url", "")))
+                return self._json({"svg": svg, "note": note})
             if path == "/api/export":
-                target = pdf_export.export(self._base_url(), body.get("mode", ""),
-                                           list(body.get("ids") or []))
-                return self._json({"path": str(target), "name": target.name})
+                return self._json(pdf_export.export(self._base_url(), str(body.get("mode", "")),
+                                                    [str(i) for i in (body.get("ids") or [])][:2],
+                                                    str(body.get("overwrite") or "ask")))
             if path == "/api/open":
                 what = body.get("what")
                 if what == "log":
@@ -295,13 +337,15 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/settings":
                 return self._json(storage.save_settings(body))
             if path == "/api/chromium":
-                from . import chromium
+                before = chromium.installed_version()
                 try:
-                    exe = chromium.download(show=False)
+                    exe = pdf_export.refresh_chromium()
                 except Exception as exc:
                     storage.log("Chromium", str(exc))
                     return self._error(f"Chromium konnte nicht geladen werden: {exc}")
-                return self._json({"path": exe, "engine": browser.find_pdf_engine() or exe})
+                version = chromium.installed_version()
+                return self._json({"path": exe, "engine": browser.find_pdf_engine() or exe,
+                                   "version": version, "changed": version != before})
             if path == "/api/pick-folder":
                 what = body.get("what")
                 current = storage.export_dir() if what == "export" else storage.data_dir()
@@ -315,10 +359,16 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, RuntimeError) as exc:
             storage.log("App", f"{self.command} {self.path}: {exc}")
             self._error(str(exc), 400)
+        except FileNotFoundError:
+            self._error("Dieses Blatt gibt es nicht mehr – bitte die Liste links neu laden.", 404)
+        except PermissionError as exc:
+            storage.log("App", f"{self.command} {self.path}: {exc}")
+            self._error(f"Keine Schreibrechte: {exc.filename or exc}. Bitte den Ordner in den Einstellungen prüfen.", 400)
         except Exception as exc:
             traceback.print_exc()
             storage.log("App", f"{self.command} {self.path}\n{traceback.format_exc()}")
-            self._error(f"Unerwarteter Fehler: {exc}", 500)
+            self._error(f"Das hat nicht geklappt ({exc.__class__.__name__}: {exc}). Einzelheiten stehen im "
+                        "Fehlerprotokoll (Einstellungen → Hilfe & Fehler).", 500)
 
 
 def start(port: int = 0) -> ThreadingHTTPServer:
@@ -326,3 +376,24 @@ def start(port: int = 0) -> ThreadingHTTPServer:
     httpd.daemon_threads = True
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd
+
+
+def housekeeping() -> None:
+    """Aufräumarbeiten im Hintergrund, kurz nach dem Start: alten Zwischenspeicher
+    entfernen und den Chromium für den PDF-Export gelegentlich erneuern."""
+    time.sleep(20)
+    try:
+        removed = storage.prune_cache()
+        if removed:
+            storage.log("App", f"Zwischenspeicher aufgeräumt ({removed} alte Einträge)")
+    except Exception:
+        pass
+    try:
+        if storage.load_settings().get("update_auto") != "0" and chromium.outdated():
+            before = chromium.installed_version()
+            pdf_export.refresh_chromium()
+            after = chromium.installed_version()
+            if after != before:
+                storage.log("Chromium", f"aktualisiert: {before} → {after}")
+    except Exception as exc:
+        storage.log("Chromium", f"Aktualisierung nicht möglich: {exc}")

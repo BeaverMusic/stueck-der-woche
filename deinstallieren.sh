@@ -31,11 +31,15 @@ fi
 
 # Laufende App beenden
 if command -v python3 >/dev/null 2>&1; then
-  python3 - "$PORT" <<'EOF' || true
+  python3 - "$PORT" "$CONFIG/zugang" <<'EOF' || true
 import sys, urllib.request
+headers = {"X-App": "1", "Content-Type": "application/json"}
+try:  # Zugangsschlüssel der laufenden App (nur für den eigenen Benutzer lesbar)
+    headers["X-App-Key"] = open(sys.argv[2], encoding="utf-8").read().strip()
+except OSError:
+    pass
 try:
-    req = urllib.request.Request(f"http://127.0.0.1:{sys.argv[1]}/api/quit", data=b"{}", method="POST",
-                                 headers={"X-App": "1", "Content-Type": "application/json"})
+    req = urllib.request.Request(f"http://127.0.0.1:{sys.argv[1]}/api/quit", data=b"{}", method="POST", headers=headers)
     urllib.request.urlopen(req, timeout=2).read()
     print("Die laufende App wurde beendet.")
 except Exception:

@@ -104,10 +104,11 @@ def _host_lock(host: str) -> threading.BoundedSemaphore:
         return _host_locks[host]
 
 
-def user_agent() -> str:
-    """Absenderkennung nach den Wikimedia-Regeln: App-Name, Version, Zweck, Kontakt."""
+def user_agent(contact: bool = True) -> str:
+    """Absenderkennung nach den Wikimedia-Regeln: App-Name, Version, Zweck, Kontakt.
+    Die Kontaktadresse geht nur an Wikimedia – andere Dienste bekommen sie nicht."""
     from . import VERSION
-    contact = storage.load_settings().get("wiki_contact", "").strip()
+    contact = storage.load_settings().get("wiki_contact", "").strip() if contact else ""
     contact = f"; {contact}" if contact else ""
     return f"StueckDerWoche/{VERSION} (Desktop-App fuer den Musikunterricht{contact}) Python-urllib"
 
@@ -208,7 +209,8 @@ def diagnose() -> list[dict]:
     results = []
     for name, url in DIAGNOSE:
         started = time.time()
-        req = urllib.request.Request(url, headers={"User-Agent": user_agent()})
+        wikimedia = (urllib.parse.urlsplit(url).hostname or "").endswith((".wikipedia.org", ".wikidata.org", ".wikimedia.org"))
+        req = urllib.request.Request(url, headers={"User-Agent": user_agent(contact=wikimedia)})
         try:
             with urllib.request.urlopen(req, timeout=15) as resp:
                 resp.read(2000)
@@ -241,20 +243,37 @@ def _normalize_url(url: str) -> str:
     url = (url or "").strip()
     if url.startswith("//"):
         url = "https:" + url
+    elif url.startswith("http://"):
+        url = "https://" + url[7:]  # Wikimedia liefert alles verschlüsselt aus
     return url
 
 
 def allowed_image_url(url: str) -> bool:
     parsed = urllib.parse.urlparse(_normalize_url(url))
     host = (parsed.hostname or "").lower()
-    return parsed.scheme in ("https", "http") and (
+    return parsed.scheme == "https" and (
         host.endswith(".wikimedia.org") or host.endswith(".wikipedia.org")
     )
 
 
+class _WikimediaOnly(urllib.request.HTTPRedirectHandler):
+    """Weiterleitungen nur zu Wikimedia-Adressen folgen."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        if not allowed_image_url(newurl):
+            raise ValueError("Unerwartete Weiterleitung beim Laden des Bildes")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_image_opener = None  # erst beim ersten Bild anlegen (dann sind die Zertifikate eingerichtet)
+
+
 def _download(url: str) -> tuple[bytes, str]:
+    global _image_opener
+    if _image_opener is None:
+        _image_opener = urllib.request.build_opener(_WikimediaOnly)
     req = urllib.request.Request(url, headers={"User-Agent": user_agent()})
-    with urllib.request.urlopen(req, timeout=10) as resp:
+    with _image_opener.open(req, timeout=10) as resp:
         data = resp.read(15 * 1024 * 1024 + 1)
         ctype = resp.headers.get("Content-Type", "").split(";")[0].strip()
     if len(data) > 15 * 1024 * 1024:
@@ -712,20 +731,24 @@ _cache: dict = {}
 _cache_lock = threading.Lock()
 
 
-def prefetch(qid: str, kind: str) -> None:
+def clear_cache() -> None:
+    with _cache_lock:
+        _cache.clear()
+
+
+def prefetch(qid: str, kind: str) -> Future:
     """Startet das Laden der Vorschläge im Hintergrund (falls nicht schon da)."""
     key = (qid, kind)
     with _cache_lock:
-        if key in _cache:
-            return
-        _cache[key] = _suggest_pool.submit(_suggest, qid, kind)
+        if key not in _cache:
+            _cache[key] = _suggest_pool.submit(_suggest, qid, kind)
+        return _cache[key]
 
 
 def suggest(qid: str, kind: str) -> dict:
     if not re.fullmatch(r"Q\d+", qid or ""):
         raise ValueError("Ungültige Wikidata-ID")
-    prefetch(qid, kind)
-    fut: Future = _cache[(qid, kind)]
+    fut = prefetch(qid, kind)
     try:
         return fut.result(timeout=60)
     except Exception:

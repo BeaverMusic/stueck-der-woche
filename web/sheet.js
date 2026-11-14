@@ -50,29 +50,30 @@
 
   const ACCENTS = ["#2E6B4F", "#1F3A5F", "#A3302A", "#8A5A00"];
 
-  // Schriften (müssen zu HEAD_FONTS/BODY_FONTS in app/storage.py passen).
-  // g = Abfrage bei Google Fonts; ohne g ist es eine Systemschrift (kein Download).
+  // Schriften (müssen zu HEAD_FONTS/BODY_FONTS in app/storage.py passen). Sie liegen der App
+  // bei (web/fonts) – es wird nichts aus dem Internet geladen. ws = benötigte Schriftstärken;
+  // ohne ws ist es eine Systemschrift.
   const FONTS = {
     head: {
-      "DM Serif Display": { css: '"DM Serif Display", Georgia, serif', g: "DM+Serif+Display" },
-      "Playfair Display": { css: '"Playfair Display", Georgia, serif', g: "Playfair+Display:wght@600", w: 600 },
-      Merriweather: { css: "Merriweather, Georgia, serif", g: "Merriweather:wght@700", w: 700 },
-      Lora: { css: "Lora, Georgia, serif", g: "Lora:wght@600", w: 600 },
-      "Source Serif 4": { css: '"Source Serif 4", Georgia, serif', g: "Source+Serif+4:wght@600", w: 600 },
-      Fraunces: { css: "Fraunces, Georgia, serif", g: "Fraunces:wght@600", w: 600 },
-      Montserrat: { css: "Montserrat, Arial, sans-serif", g: "Montserrat:wght@600", w: 600 },
+      "DM Serif Display": { css: '"DM Serif Display", Georgia, serif', ws: [400] },
+      "Playfair Display": { css: '"Playfair Display", Georgia, serif', ws: [600], w: 600 },
+      Merriweather: { css: "Merriweather, Georgia, serif", ws: [700], w: 700 },
+      Lora: { css: "Lora, Georgia, serif", ws: [600], w: 600 },
+      "Source Serif 4": { css: '"Source Serif 4", Georgia, serif', ws: [600], w: 600 },
+      Fraunces: { css: "Fraunces, Georgia, serif", ws: [600], w: 600 },
+      Montserrat: { css: "Montserrat, Arial, sans-serif", ws: [600], w: 600 },
       Georgia: { css: 'Georgia, "Times New Roman", serif', label: "Georgia (Systemschrift)" },
     },
     body: {
-      "DM Sans": { css: '"DM Sans", "Helvetica Neue", Arial, sans-serif', g: "DM+Sans:wght@400;600" },
-      "Source Sans 3": { css: '"Source Sans 3", Arial, sans-serif', g: "Source+Sans+3:wght@400;600" },
-      "Open Sans": { css: '"Open Sans", Arial, sans-serif', g: "Open+Sans:wght@400;600" },
-      Lato: { css: "Lato, Arial, sans-serif", g: "Lato:wght@400;700" },
-      Nunito: { css: "Nunito, Arial, sans-serif", g: "Nunito:wght@400;600" },
-      "Atkinson Hyperlegible": { css: '"Atkinson Hyperlegible", Arial, sans-serif', g: "Atkinson+Hyperlegible:wght@400;700", label: "Atkinson Hyperlegible (besonders gut lesbar)" },
-      Andika: { css: "Andika, Arial, sans-serif", g: "Andika:wght@400;700", label: "Andika (Leseschrift für Kinder)" },
-      Merriweather: { css: "Merriweather, Georgia, serif", g: "Merriweather:wght@400;700", label: "Merriweather (mit Serifen)" },
-      Lora: { css: "Lora, Georgia, serif", g: "Lora:wght@400;600", label: "Lora (mit Serifen)" },
+      "DM Sans": { css: '"DM Sans", "Helvetica Neue", Arial, sans-serif', ws: [400, 600] },
+      "Source Sans 3": { css: '"Source Sans 3", Arial, sans-serif', ws: [400, 600] },
+      "Open Sans": { css: '"Open Sans", Arial, sans-serif', ws: [400, 600] },
+      Lato: { css: "Lato, Arial, sans-serif", ws: [400, 700] },
+      Nunito: { css: "Nunito, Arial, sans-serif", ws: [400, 600] },
+      "Atkinson Hyperlegible": { css: '"Atkinson Hyperlegible", Arial, sans-serif', ws: [400, 700], label: "Atkinson Hyperlegible (besonders gut lesbar)" },
+      Andika: { css: "Andika, Arial, sans-serif", ws: [400, 700], label: "Andika (Leseschrift für Kinder)" },
+      Merriweather: { css: "Merriweather, Georgia, serif", ws: [400, 700], label: "Merriweather (mit Serifen)" },
+      Lora: { css: "Lora, Georgia, serif", ws: [400, 600], label: "Lora (mit Serifen)" },
       Helvetica: { css: '"Helvetica Neue", Helvetica, Arial, sans-serif', label: "Helvetica / Arial (Systemschrift)" },
     },
   };
@@ -100,41 +101,20 @@
     return d;
   }
 
-  function fontUrl(d) {
-    // Gleiche Familie nur einmal anfragen, Schriftstärken zusammenführen
-    const merged = new Map();
-    for (const g of [FONTS.head[d.font_head].g, FONTS.body[d.font_body].g, FONTS.body[d.font_info].g]) {
-      if (!g) continue;
-      const [name, w] = g.split(":wght@");
-      const set = merged.get(name) || new Set();
-      (w || "400").split(";").forEach((x) => set.add(Number(x)));
-      merged.set(name, set);
-    }
-    const fams = [...merged].map(([name, set]) => {
-      const ws = [...set].sort((a, b) => a - b);
-      return ws.length === 1 && ws[0] === 400 ? name : `${name}:wght@${ws.join(";")}`;
-    });
-    return fams.length
-      ? "https://fonts.googleapis.com/css2?" + fams.map((f) => "family=" + f).join("&") + "&display=swap"
-      : "";
-  }
-
-  /* Bindet die benötigten Schriften in das Dokument ein (nur Google-Fonts-Adressen). */
+  /* Lädt die gewählten Schriften (aus web/fonts; preview.html und print.html binden
+     fonts/fonts.css ein). Die Zusage erfüllt sich, sobald sie bereitstehen. */
   function loadFonts(d, doc) {
     doc = doc || document;
-    const url = fontUrl(d);
-    let link = doc.getElementById("sheet-fonts");
-    if (!url) { if (link) link.remove(); return Promise.resolve(); }
-    if (link && link.getAttribute("href") === url) return link._ready || Promise.resolve();
-    if (!link) {
-      link = doc.createElement("link");
-      link.id = "sheet-fonts";
-      link.rel = "stylesheet";
-      doc.head.appendChild(link);
+    if (!doc.fonts || !doc.fonts.load) return Promise.resolve();
+    const loads = [];
+    for (const [name, f] of [[d.font_head, FONTS.head[d.font_head]], [d.font_body, FONTS.body[d.font_body]],
+      [d.font_info, FONTS.body[d.font_info]]]) {
+      for (const w of f.ws || []) loads.push(doc.fonts.load(`${w} 16px "${name}"`));
     }
-    link._ready = new Promise((r) => { link.onload = link.onerror = () => r(); setTimeout(r, 8000); });
-    link.href = url;
-    return link._ready;
+    return Promise.race([
+      Promise.all(loads).catch(() => {}),
+      new Promise((r) => setTimeout(r, 5000)),
+    ]);
   }
 
   function designStyle(d) {
@@ -146,30 +126,35 @@
   // Ausgangslage des Bildausschnitts (Mitte, eher oben – wo bei Porträts das Gesicht ist)
   const IMAGE_DEFAULTS = { x: 50, y: 25, zoom: 1 };
 
-  // Eingebaute Arten sind ihre eigene Grundlage
+  // Eingebaute Typen sind ihre eigene Grundlage
   for (const [k, g] of Object.entries(GENRES)) g.base = k;
-  // Weitere Farben für eigene Arten
+  // Weitere Farben für eigene Typen
   const EXTRA_ACCENTS = ["#6B3FA0", "#0F6E78", "#B3541E", "#7A1F4F", "#4A5B2A"];
 
-  // Ursprüngliche Namen und Farben der eingebauten Typen (zum Zurücksetzen)
+  // Ursprüngliche Namen, Farben und Angaben der eingebauten Typen (zum Zurücksetzen)
   const BUILTIN = {};
-  for (const [k, g] of Object.entries(GENRES)) BUILTIN[k] = { label: g.label, accent: g.accent };
+  for (const [k, g] of Object.entries(GENRES)) {
+    BUILTIN[k] = { label: g.label, accent: g.accent, fields: g.fields.map((f) => f.slice()) };
+  }
 
   /* Typen aus den Einstellungen anwenden: eigene hinzufügen, eingebaute umbenennen,
-     umfärben oder ausblenden (ausgeblendete bleiben für bestehende Blätter bekannt). */
+     umfärben, mit anderen Angaben versehen oder ausblenden (ausgeblendete bleiben für bestehende Blätter bekannt). */
   function setCustomKinds(list) {
     for (const k of Object.keys(GENRES)) if (GENRES[k].custom) delete GENRES[k];
-    for (const [k, d] of Object.entries(BUILTIN)) Object.assign(GENRES[k], d, { hidden: false });
+    for (const [k, d] of Object.entries(BUILTIN)) {
+      Object.assign(GENRES[k], { label: d.label, accent: d.accent, fields: d.fields.map((f) => f.slice()), hidden: false });
+    }
     for (const c of Array.isArray(list) ? list : []) {
       if (c && BUILTIN[c.key]) {
         const g = GENRES[c.key];
         if (c.label) g.label = String(c.label);
         if (c.accent) g.accent = safeColor(c.accent);
+        if (Array.isArray(c.fields) && c.fields.length) g.fields = c.fields.map((f) => [String(f[0]), !!f[1]]);
         g.hidden = !!c.hidden;
         continue;
       }
       if (!c || !/^k-[a-z0-9-]+$/.test(c.key) || GENRES[c.key]) continue;
-      GENRES[c.key] = { label: String(c.label || "Eigene Art"), accent: safeColor(c.accent),
+      GENRES[c.key] = { label: String(c.label || "Eigener Typ"), accent: safeColor(c.accent),
         fields: (c.fields || []).map((f) => [String(f[0]), !!f[1]]), base: c.base in GENRES ? c.base : "sonstiges", custom: true };
     }
   }
@@ -191,6 +176,7 @@
       infotext: "",
       info_size: "", // eigene Infotext-Größe in pt, leer = wie alle Blätter
       ai_checks: [],
+      code_v: 2, // QR-Codes mit dem Rand nach Norm (siehe app/storage.py)
       image: { file: "", v: 0, credit: "", ...IMAGE_DEFAULTS },
       links: { youtube: "", spotify: "", apple: "" },
       codes: { youtube: "", spotify: "", apple: "" },
@@ -298,7 +284,7 @@
       const z = num(img.zoom, 1, 1, 3);
       const src = `${opts.assetBase || ""}/data/${encodeURIComponent(s.id)}/${encodeURIComponent(
         img.file
-      )}?v=${encodeURIComponent(img.v || 0)}`;
+      )}?v=${encodeURIComponent(img.v || 0)}${opts.assetKey ? "&k=" + encodeURIComponent(opts.assetKey) : ""}`;
       // Vergrößern ohne CSS-Transformation (wird in PDFs zuverlässiger dargestellt):
       // Bild größer als der Rahmen und so verschoben, dass der gewählte Punkt sichtbar bleibt.
       const off = (v) => (-(z - 1) * v).toFixed(2);
@@ -317,7 +303,9 @@
       const svg = safeSvg(codes[sv.key]);
       if (!svg && !preview) continue;
       let inner;
-      if (sv.type === "qr") {
+      // Ist der Spotify-Code nicht abrufbar, liefert die App ersatzweise einen (quadratischen) QR-Code
+      const square = /viewBox="0 0 (\d+) \1"/.test(svg);
+      if (sv.type === "qr" || square) {
         inner = svg
           ? `<div class="s-qr">${svg}</div>`
           : `<div class="s-qr s-empty">${ICON_QR}</div>`;

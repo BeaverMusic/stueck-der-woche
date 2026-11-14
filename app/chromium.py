@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import os
 import platform
+import re
 import shutil
 import stat
 import subprocess
@@ -26,6 +27,7 @@ INDEX_URL = (
     "last-known-good-versions-with-downloads.json"
 )
 EXE_NAME = "chrome-headless-shell"
+REFRESH_DAYS = 60  # so oft wird nach einer neueren Version geschaut
 
 
 def base_dir() -> Path:
@@ -48,10 +50,42 @@ def installed() -> str | None:
     base = base_dir()
     if not base.is_dir():
         return None
-    for exe in sorted(base.glob(f"*/{EXE_NAME}-*/{EXE_NAME}"), reverse=True):
+    def version(exe: Path) -> list:
+        return [int(x) for x in exe.parent.parent.name.split(".") if x.isdigit()]
+
+    for exe in sorted(base.glob(f"*/{EXE_NAME}-*/{EXE_NAME}"), key=version, reverse=True):
         if os.access(exe, os.X_OK):
             return str(exe)
     return None
+
+
+def installed_version() -> str:
+    exe = installed()
+    return Path(exe).parent.parent.name if exe else ""
+
+
+def _stamp() -> Path:
+    return base_dir() / "geprueft"
+
+
+def outdated() -> bool:
+    """Ist die letzte Prüfung auf eine neuere Version länger her als REFRESH_DAYS?"""
+    exe = installed()
+    if not exe:
+        return False
+    try:
+        last = _stamp().stat().st_mtime
+    except OSError:
+        last = 0
+    return time.time() - last > REFRESH_DAYS * 86400
+
+
+def cleanup_old(keep_exe: str) -> None:
+    """Ältere Versionen entfernen (nicht, während gerade ein PDF entsteht – siehe pdf_export)."""
+    keep = Path(keep_exe).parent.parent
+    for old in base_dir().iterdir():
+        if old.is_dir() and old != keep:
+            shutil.rmtree(old, ignore_errors=True)
 
 
 # ------------------------------------------------------------------ Anzeige
@@ -128,11 +162,15 @@ def _extract(zip_path: Path, dest: Path) -> None:
 _lock = __import__("threading").Lock()
 
 
-def download(show: bool = True) -> str:
+def download(show: bool = True, cleanup: bool = True) -> str:
+    """Lädt die aktuelle Version (falls noch nicht vorhanden) und gibt den Pfad zurück."""
     if not _lock.acquire(blocking=False):
         raise RuntimeError("Chromium wird bereits geladen – bitte warten.")
     try:
-        return _download_locked(show)
+        exe = _download_locked(show)
+        if cleanup:
+            cleanup_old(exe)
+        return exe
     finally:
         _lock.release()
 
@@ -153,8 +191,12 @@ def _download_locked(show: bool) -> str:
     if not str(entry.get("url", "")).startswith("https://storage.googleapis.com/chrome-for-testing-public/"):
         raise RuntimeError("Unerwartete Download-Adresse – Abbruch.")
 
+    if not re.fullmatch(r"\d+(\.\d+){1,4}", str(version)):
+        raise RuntimeError("Unerwartete Versionsangabe – Abbruch.")
     dest = base_dir() / version
     exe = dest / f"{EXE_NAME}-{plat}" / EXE_NAME
+    base_dir().mkdir(parents=True, exist_ok=True)
+    _stamp().write_text(time.strftime("%Y-%m-%d %H:%M:%S") + "\n", "utf-8")  # geprüft am …
     if exe.is_file():
         if show:
             print(f"  Version {version} ist bereits vorhanden.")
@@ -178,11 +220,6 @@ def _download_locked(show: bool) -> str:
     if not exe.is_file():
         raise RuntimeError("Das Archiv hatte nicht den erwarteten Inhalt.")
     exe.chmod(exe.stat().st_mode | 0o111)
-
-    # ältere Versionen entfernen
-    for old in base_dir().iterdir():
-        if old.is_dir() and old != dest:
-            shutil.rmtree(old, ignore_errors=True)
     return str(exe)
 
 

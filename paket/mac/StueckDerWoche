@@ -46,12 +46,39 @@ notify() {
     -e 'end run' "$APP_NAME" "$1" >/dev/null 2>&1 || true
 }
 
-as_admin() {  # Befehl mit der Passwortabfrage von macOS als Administrator ausführen
-  /usr/bin/osascript - "$1" "$2" <<'EOF'
+# Befehl mit der Passwortabfrage von macOS als Administrator ausführen:
+#   as_admin "Text der Abfrage" Programm Argument …
+# Programm und Argumente werden einzeln übergeben und von AppleScript sicher in
+# Anführungszeichen gesetzt – ein Pfad mit ungewöhnlichen Zeichen (z. B. der Name des
+# Installations-Abbilds) kann so keinen fremden Befehl einschleusen.
+as_admin() {
+  /usr/bin/osascript - "$@" <<'EOF'
 on run argv
-  do shell script (item 1 of argv) with prompt (item 2 of argv) with administrator privileges
+  set cmd to ""
+  repeat with i from 2 to (count of argv)
+    set cmd to cmd & (quoted form of (item i of argv)) & " "
+  end repeat
+  do shell script cmd with prompt (item 1 of argv) with administrator privileges
 end run
 EOF
+}
+
+# Kopiert die App nach „Programme“: erst vollständig daneben, dann austauschen.
+#   copy_app Quelle Ziel [Besitzer]
+copy_app() {
+  rm -rf "$2.neu" && /usr/bin/ditto "$1" "$2.neu" && rm -rf "$2" && mv "$2.neu" "$2" || return 1
+  # Die Markierung „aus dem Internet geladen“ entfernen (fehlt sie, ist das kein Fehler)
+  /usr/bin/xattr -dr com.apple.quarantine "$2" 2>/dev/null || true
+  if [ -n "$3" ]; then chown -R "$3" "$2"; fi
+}
+
+# Laufende App bitten, sich zu beenden. Der Zugangsschlüssel wird über die Standardeingabe
+# übergeben – in der Befehlszeile könnten ihn andere Benutzer des Rechners mitlesen.
+quit_running() {
+  local key
+  key="$(cat "$SUPPORT/zugang" 2>/dev/null | tr -cd 'A-Za-z0-9_-')"
+  printf 'header = "X-App: 1"\nheader = "Content-Type: application/json"\nheader = "X-App-Key: %s"\n' "$key" \
+    | /usr/bin/curl -s -m 2 -K - -X POST -d '{}' http://127.0.0.1:47110/api/quit >/dev/null 2>&1 || true
 }
 
 # Bei macOS anmelden, damit Finder, Launchpad und Spotlight (Cmd+Leertaste) die App
@@ -87,14 +114,15 @@ Deine Blätter und Einstellungen bleiben bei einem Update erhalten." "Abbrechen"
       esac
       TARGET="/Applications/$APP_NAME.app"
       # Laufende alte Version beenden
-      /usr/bin/curl -s -m 2 -X POST -H "X-App: 1" -H "Content-Type: application/json" -d '{}' \
-        http://127.0.0.1:47110/api/quit >/dev/null 2>&1 || true
+      quit_running
       sleep 1
-      COPY="rm -rf '$TARGET.neu' && /usr/bin/ditto '$SRC_APP' '$TARGET.neu' && rm -rf '$TARGET' && mv '$TARGET.neu' '$TARGET' && /usr/bin/xattr -dr com.apple.quarantine '$TARGET'"
       if { [ -w /Applications ] && { [ ! -e "$TARGET" ] || [ -w "$TARGET" ]; }; } ; then
-        ok=0; sh -c "$COPY" >> "$LOG" 2>&1 && ok=1
+        ok=0; copy_app "$SRC_APP" "$TARGET" >> "$LOG" 2>&1 && ok=1
       else
-        ok=0; as_admin "$COPY && chown -R $(id -un) '$TARGET'" "Stück der Woche möchte sich in den Ordner „Programme“ kopieren." >> "$LOG" 2>&1 && ok=1
+        # Mit Administratorrechten: dieselben Schritte, die Pfade als einzelne Argumente
+        ok=0; as_admin "Stück der Woche möchte sich in den Ordner „Programme“ kopieren." /bin/sh -c \
+          'rm -rf "$2.neu" && /usr/bin/ditto "$1" "$2.neu" && rm -rf "$2" && mv "$2.neu" "$2" && chown -R "$3" "$2" && { /usr/bin/xattr -dr com.apple.quarantine "$2" 2>/dev/null || true; }' \
+          sh "$SRC_APP" "$TARGET" "$(id -un)" >> "$LOG" 2>&1 && ok=1
       fi
       if [ "$ok" = 1 ]; then
         rm -rf "$HOME/Applications/$APP_NAME.app" 2>/dev/null  # ältere Version im Benutzerordner
@@ -154,11 +182,15 @@ install_python() {
   notify "Python $v wird geladen (ca. 70 MB) – das kann einige Minuten dauern …"
   say "Lade $url"
   /usr/bin/curl -fsSL -o "$pkg" "$url" || { rm -rf "$tmp"; return 1; }
-  if ! /usr/sbin/pkgutil --check-signature "$pkg" 2>/dev/null | grep -q "Python Software Foundation"; then
+  # Nur ein Paket installieren, dessen Signatur macOS als gültig anerkennt und die von der
+  # Python Software Foundation stammt (Entwickler-Zertifikat von Apple).
+  local sig
+  if ! sig="$(/usr/sbin/pkgutil --check-signature "$pkg" 2>/dev/null)" \
+     || ! printf '%s\n' "$sig" | grep -q "Developer ID Installer: Python Software Foundation"; then
     say "Signatur des Python-Pakets ungültig"; rm -rf "$tmp"; return 2
   fi
-  as_admin "/usr/sbin/installer -pkg '$pkg' -target /" \
-    "Stück der Woche möchte Python $v installieren (offizielles Paket von python.org)." >> "$LOG" 2>&1
+  as_admin "Stück der Woche möchte Python $v installieren (offizielles Paket von python.org)." \
+    /usr/sbin/installer -pkg "$pkg" -target / >> "$LOG" 2>&1
   local rc=$?
   rm -rf "$tmp"
   return $rc

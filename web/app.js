@@ -2,7 +2,7 @@
 (function () {
   "use strict";
 
-  const APP_VERSION = "0.6.1.2"; // muss zu app/__init__.py passen
+  const APP_VERSION = "0.6.9"; // muss zu app/__init__.py passen
   const { GENRES, ACCENTS, newSheet, esc } = window.Sheet;
   const $ = (sel, root = document) => root.querySelector(sel);
 
@@ -12,6 +12,9 @@
     settings: { header_right: "Musik" },
     search: "",
     genre: "all",
+    sort: "updated",
+    trash: [],
+    assetKey: "", // Schlüssel für Bildadressen (kommt mit den Einstellungen)
     saveTimer: null,
     saving: null,
     dirty: false,
@@ -59,8 +62,9 @@
 
   // ------------------------------------------------------------------ API
 
-  async function request(method, path, body) {
-    const opts = { method, headers: {} };
+  async function request(method, path, body, extra) {
+    const opts = { method, headers: Start.headers() };
+    if (extra && extra.signal) opts.signal = extra.signal;
     if (method === "POST") {
       opts.headers["Content-Type"] = "application/json";
       opts.headers["X-App"] = "1";
@@ -70,8 +74,13 @@
     const busyId = busyStart(path);
     try {
       res = await fetch(path, opts);
-    } catch (_) {
+    } catch (e) {
       busyEnd(busyId);
+      if (e && e.name === "AbortError") {
+        const err = new Error("Abgebrochen.");
+        err.code = "abort";
+        throw err;
+      }
       appGone();
       const err = new Error("Die App läuft im Hintergrund nicht mehr – bitte „Stück der Woche“ neu starten. Ungespeicherte Änderungen werden danach automatisch nachgespeichert, solange dieses Fenster offen bleibt.");
       err.code = "offline";
@@ -84,10 +93,34 @@
     if (!res.ok) {
       const err = new Error((data && data.error) || `Fehler ${res.status}`);
       err.code = data && data.code;
+      if (res.status === 401 && err.code === "zugang") lockedOut();
       throw err;
     }
     return data;
   }
+
+  // Die App nimmt nur Anfragen ihres eigenen Fensters an (Zugangsschlüssel, siehe start.js).
+  // Fehlt er oder gilt er nicht mehr, erklärt ein Hinweis, was zu tun ist.
+  let locked = false;
+  let ping = () => {}; // Lebenszeichen an die App, wird beim Start eingerichtet
+  function lockedOut() {
+    if (locked) return;
+    locked = true;
+    setTimeout(() => ping(), 3000); // war es nur ein kurzer Moment (Neustart der App), löst sich die Sperre wieder
+    const dlg = $("#dlg");
+    if (dlg.open) dlg.close();
+    $("#locked-dirty").hidden = !state.dirty;
+    $("#locked").hidden = false;
+    setStatus("Nicht mit der App verbunden", true);
+  }
+  function unlock() {
+    if (!locked) return;
+    locked = false;
+    $("#locked").hidden = true;
+    setStatus("Verbindung wiederhergestellt");
+    if (state.dirty) saveNow();
+  }
+
   let offline = false;
   function appGone() {
     if (offline) return;
@@ -151,7 +184,7 @@
       `<h2>${esc(title)}</h2><p>${esc(text)}</p>
        <div class="buttons"><button type="button" class="btn" data-close>Abbrechen</button>
        <button type="button" class="btn ${danger ? "btn-primary" : "btn-primary"}" id="dlg-ok"
-         ${danger ? 'style="background:var(--danger);border-color:var(--danger)"' : ""}>${esc(okLabel)}</button></div>`,
+         ${danger ? 'style="background:var(--danger-fill);border-color:var(--danger-fill)"' : ""}>${esc(okLabel)}</button></div>`,
       (dlg, close) => ($("#dlg-ok", dlg).onclick = () => close(true))
     );
   }
@@ -171,6 +204,24 @@
     }));
   }
 
+  const listName = (s) => s.short_title || s.title || "Ohne Titel";
+  const SORTS = {
+    updated: (a, b) => (b.updated || "").localeCompare(a.updated || ""),
+    created: (a, b) => (b.created || "").localeCompare(a.created || ""),
+    title: (a, b) => listName(a).localeCompare(listName(b), "de", { sensitivity: "base", numeric: true }),
+  };
+
+  // Datum kurz: „heute“, „gestern“ oder 12.11.26
+  function fmtDate(iso) {
+    const d = new Date(iso || "");
+    if (isNaN(d)) return "";
+    const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const diff = Math.round((day(new Date()) - day(d)) / 86400000);
+    if (diff === 0) return "heute";
+    if (diff === 1) return "gestern";
+    return d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "2-digit" });
+  }
+
   let lastListKey = "";
   function renderList() {
     const q = state.search.toLowerCase();
@@ -178,11 +229,13 @@
       if (state.genre !== "all" && s.kind !== state.genre) return false;
       if (!q) return true;
       return [s.short_title, s.title, s.person].join(" ").toLowerCase().includes(q);
-    });
+    }).sort(SORTS[state.sort] || SORTS.updated);
+    const byCreated = state.sort === "created";
+    const dateOf = (x) => fmtDate(byCreated ? x.created : x.updated);
     const ul = $("#sheet-list");
     // Nur neu aufbauen, wenn sich an der Liste etwas geändert hat
-    const key = JSON.stringify([items.map((x) => [x.id, x.short_title, x.title, x.person, x.kind]),
-      state.current && state.current.id, state.list.length]);
+    const key = JSON.stringify([items.map((x) => [x.id, x.short_title, x.title, x.person, x.kind, dateOf(x)]),
+      state.current && state.current.id, state.list.length, state.sort]);
     if (key === lastListKey && ul.childElementCount) return;
     lastListKey = key;
     if (!items.length) {
@@ -195,8 +248,9 @@
         const cur = state.current && state.current.id === s.id;
         return `<li><button type="button" data-id="${esc(s.id)}" aria-current="${cur}">
           <span class="dot" style="background:${color}"></span>
-          <span><div class="t">${esc(s.short_title || s.title || "Ohne Titel")}</div>
-          <div class="p">${esc(s.person || "")}</div></span></button></li>`;
+          <span class="txt"><span class="t">${esc(listName(s))}</span>
+          <span class="p"><span class="pn">${esc(s.person || "")}</span>
+            <span class="d" title="${byCreated ? "angelegt" : "zuletzt bearbeitet"}">${esc(dateOf(s))}</span></span></span></button></li>`;
       })
       .join("");
     ul.querySelectorAll("button").forEach((b) => (b.onclick = () => openSheet(b.dataset.id)));
@@ -205,6 +259,90 @@
   async function refreshList() {
     state.list = await get("/api/sheets");
     renderList();
+  }
+
+  // ------------------------------------------------------------------ Papierkorb
+
+  async function refreshTrash() {
+    try { state.trash = await get("/api/trash"); } catch (_) { return; }
+    const b = $("#btn-trash");
+    b.hidden = !state.trash.length;
+    b.textContent = `Papierkorb (${state.trash.length})`;
+  }
+
+  async function restoreFromTrash(name) {
+    const sheet = await post("/api/trash/restore", { name });
+    await Promise.all([refreshList(), refreshTrash()]);
+    return sheet;
+  }
+
+  async function trashFlow() {
+    await refreshTrash();
+    let restored = null;
+    await dialog(
+      `<h2>Papierkorb</h2>
+       <p>Gelöschte Blätter bleiben hier liegen, bis du sie endgültig löschst.</p>
+       <ul class="trash-list" id="trash-list"></ul>
+       <div class="buttons"><span class="hint set-status" id="trash-msg" role="status"></span>
+         <button type="button" class="btn btn-ghost btn-danger" id="trash-empty">Papierkorb leeren</button>
+         <button type="button" class="btn btn-primary" data-close>Fertig</button></div>`,
+      (dlg, close) => {
+        dlg.classList.add("dialog-wide");
+        const ul = $("#trash-list", dlg), msg = $("#trash-msg", dlg), empty = $("#trash-empty", dlg);
+        const say = (text, error) => { msg.textContent = text; msg.style.color = error ? "var(--danger)" : "var(--ok)"; };
+        // Endgültiges Löschen erst nach einem zweiten Klick
+        const twice = (btn, label) => {
+          if (btn.dataset.sure === "1") return true;
+          btn.dataset.sure = "1";
+          btn.textContent = label;
+          btn.classList.add("sure");
+          return false;
+        };
+        const draw = () => {
+          empty.hidden = !state.trash.length;
+          empty.dataset.sure = "";
+          empty.textContent = "Papierkorb leeren";
+          empty.classList.remove("sure");
+          if (!state.trash.length) {
+            ul.innerHTML = `<li class="none">Der Papierkorb ist leer.</li>`;
+            return;
+          }
+          ul.innerHTML = state.trash.map((t) => `<li>
+            <span class="dot" style="background:${esc((GENRES[t.kind] || GENRES.klassik).accent)}"></span>
+            <span class="txt"><span class="t">${esc(t.short_title || t.title || "Ohne Titel")}</span>
+              <span class="p">${esc([t.person, "gelöscht " + fmtDate(t.deleted)].filter(Boolean).join(" · "))}</span></span>
+            <button type="button" class="btn btn-small" data-restore="${esc(t.name)}">Wiederherstellen</button>
+            <button type="button" class="btn btn-small btn-ghost btn-danger" data-purge="${esc(t.name)}">Endgültig löschen</button></li>`).join("");
+          ul.querySelectorAll("[data-restore]").forEach((b) => (b.onclick = async () => {
+            try {
+              restored = await restoreFromTrash(b.dataset.restore);
+              say(`✓ „${restored.short_title || restored.title || "Ohne Titel"}“ ist wieder in deiner Sammlung.`);
+              draw();
+            } catch (e) { say(e.message, true); }
+          }));
+          ul.querySelectorAll("[data-purge]").forEach((b) => (b.onclick = async () => {
+            if (!twice(b, "Wirklich löschen?")) return;
+            try {
+              await post("/api/trash/purge", { name: b.dataset.purge });
+              await refreshTrash();
+              say("Endgültig gelöscht.");
+              draw();
+            } catch (e) { say(e.message, true); }
+          }));
+        };
+        empty.onclick = async () => {
+          if (!twice(empty, `Wirklich alle ${state.trash.length} endgültig löschen?`)) return;
+          try {
+            const r = await post("/api/trash/purge", { name: "" });
+            await refreshTrash();
+            say(`${r.removed} ${r.removed === 1 ? "Blatt" : "Blätter"} endgültig gelöscht.`);
+            draw();
+          } catch (e) { say(e.message, true); }
+        };
+        draw();
+      }
+    );
+    if (restored && !state.current) openSheet(restored.id);
   }
 
   // ------------------------------------------------------------------ Blatt öffnen / anlegen
@@ -236,7 +374,7 @@
   async function newSheetFlow() {
     const kind = await dialog(
       `<h2>Neues Blatt</h2><p>Welcher Typ von Stück? Das legt die passenden Felder und die Farbe fest. Beides kannst du danach ändern.</p>
-       <p class="hint">Tipp: Klick auf den Farbpunkt ändert Name und Farbe eines Typs, das × blendet ihn aus.</p>
+       <p class="hint">Tipp: Klick auf den Farbpunkt ändert Name, Farbe und Angaben eines Typs, das × blendet ihn aus.</p>
        <div class="genre-grid" id="type-grid"></div>
        <button type="button" class="link-btn" id="type-restore" hidden></button>
        <div class="type-form" id="type-form" hidden>
@@ -244,6 +382,14 @@
          <div class="swatches" id="tf-swatches">${[...Sheet.EXTRA_ACCENTS, ...ACCENTS].map((c) =>
            `<button type="button" class="swatch" data-c="${c}" style="background:${c}" aria-label="Farbe ${c}" aria-pressed="false"></button>`).join("")}
            <input type="color" id="tf-color" aria-label="Eigene Farbe"></div>
+         <details class="tf-more" id="tf-more">
+           <summary>Angaben auf neuen Blättern <span class="hint" id="tf-more-sum"></span></summary>
+           <div class="row" id="tf-base-row"><label for="tf-base">Automatisch ausfüllen und Aufnahmen suchen wie bei</label>
+             <select id="tf-base"></select></div>
+           <div id="tf-fields" class="tf-fields"></div>
+           <div class="tf-fields-foot"><button type="button" class="btn btn-small" id="tf-add-field">+ Angabe</button>
+             <span class="hint">Gilt für neue Blätter – bestehende bleiben, wie sie sind.</span></div>
+         </details>
          <div class="type-form-actions"><span class="hint" id="tf-msg"></span>
            <button type="button" class="btn btn-small btn-ghost" id="tf-reset" hidden>Standard</button>
            <button type="button" class="btn btn-small btn-ghost" id="tf-cancel">Zurück</button>
@@ -254,6 +400,55 @@
         const grid = $("#type-grid", dlg), form = $("#type-form", dlg), msg = $("#tf-msg", dlg);
         let color = Sheet.EXTRA_ACCENTS[0];
         let editing = null; // Schlüssel des Typs, der gerade bearbeitet wird (null = neuer Typ)
+        let fields = []; // Angaben des Typs im Formular: [[Bezeichnung, breit], …]
+        let fieldsTouched = false;
+        const baseSel = $("#tf-base", dlg), fieldBox = $("#tf-fields", dlg);
+        const cloneFields = (list) => (list || []).map((f) => [String(f[0]), !!f[1]]);
+        const cleanFields = () => fields.map((f) => [f[0].replace(/\s+/g, " ").trim(), !!f[1]]).filter((f) => f[0]);
+        const sumFields = () => {
+          $("#tf-more-sum", dlg).textContent = "– " + (cleanFields().map((f) => f[0]).join(", ") || "keine");
+        };
+        const drawFields = () => {
+          fieldBox.innerHTML = fields.map((f, i) => `<div class="tf-field">
+            <input type="text" maxlength="30" value="${esc(f[0])}" data-i="${i}" placeholder="Bezeichnung, z. B. Film" aria-label="Angabe ${i + 1}">
+            <label title="Über die ganze Breite des Blatts"><input type="checkbox" data-w="${i}" ${f[1] ? "checked" : ""}>breit</label>
+            <button type="button" class="icon-btn" data-rm="${i}" aria-label="Angabe entfernen" title="Angabe entfernen">×</button></div>`).join("");
+          fieldBox.querySelectorAll("input[type=text]").forEach((inp) => (inp.oninput = () => {
+            fields[Number(inp.dataset.i)][0] = inp.value;
+            fieldsTouched = true;
+            sumFields();
+          }));
+          fieldBox.querySelectorAll("input[type=checkbox]").forEach((inp) => (inp.onchange = () => {
+            fields[Number(inp.dataset.w)][1] = inp.checked;
+            fieldsTouched = true;
+          }));
+          fieldBox.querySelectorAll("[data-rm]").forEach((b) => (b.onclick = () => {
+            fields.splice(Number(b.dataset.rm), 1);
+            fieldsTouched = true;
+            drawFields();
+          }));
+          $("#tf-add-field", dlg).disabled = fields.length >= 12;
+          sumFields();
+        };
+        $("#tf-add-field", dlg).onclick = () => {
+          fields.push(["", false]);
+          fieldsTouched = true;
+          drawFields();
+          const inputs = fieldBox.querySelectorAll("input[type=text]");
+          inputs[inputs.length - 1].focus();
+        };
+        // Neuer Typ: Die Vorlage bringt ihre üblichen Angaben mit (solange noch nichts geändert wurde)
+        baseSel.onchange = () => {
+          if (editing || fieldsTouched) return;
+          fields = cloneFields(GENRES[baseSel.value].fields);
+          drawFields();
+        };
+        const sameFields = (a, b) => JSON.stringify(cloneFields(a)) === JSON.stringify(cloneFields(b));
+        // Weicht ein eingebauter Typ vom Werkszustand ab?
+        const builtinChanged = (key) => {
+          const d = Sheet.BUILTIN[key], g = GENRES[key];
+          return !!d && (g.label !== d.label || g.accent.toLowerCase() !== d.accent.toLowerCase() || !sameFields(g.fields, d.fields));
+        };
         const customs = () => parseKinds(state.settings.custom_kinds);
         // Eintrag ändern oder (für eingebaute Typen) neu anlegen
         const upsert = (key, changes) => {
@@ -271,6 +466,7 @@
             const y = { key: x.key };
             if (x.label && x.label !== d.label) y.label = x.label;
             if (x.accent && x.accent.toLowerCase() !== d.accent.toLowerCase()) y.accent = x.accent;
+            if (Array.isArray(x.fields) && x.fields.length && !sameFields(x.fields, d.fields)) y.fields = x.fields;
             if (x.hidden) y.hidden = true;
             return Object.keys(y).length > 1 ? y : null;
           }).filter(Boolean);
@@ -325,10 +521,16 @@
           syncColor();
           $("#tf-name", dlg).value = t ? t.label : "";
           $("#tf-ok", dlg).textContent = t ? "Fertig" : "Anlegen";
-          $("#tf-cancel", dlg).hidden = !!t; // beim Bearbeiten ist alles sofort gespeichert
-          $("#tf-reset", dlg).hidden = !(t && Sheet.BUILTIN[editing] &&
-            (t.label !== Sheet.BUILTIN[editing].label || t.accent.toLowerCase() !== Sheet.BUILTIN[editing].accent.toLowerCase()));
-          msg.textContent = t ? "Ein Klick auf eine Farbe übernimmt sie sofort." : "";
+          $("#tf-cancel", dlg).hidden = !!t; // beim Bearbeiten gilt die Farbe sofort, der Rest mit „Fertig“
+          $("#tf-reset", dlg).hidden = !(t && builtinChanged(editing));
+          baseSel.innerHTML = Object.keys(Sheet.BUILTIN).map((k) => `<option value="${k}">${esc(GENRES[k].label)}</option>`).join("");
+          baseSel.value = t ? Sheet.baseKind(editing) : "sonstiges";
+          $("#tf-base-row", dlg).hidden = !!(t && Sheet.BUILTIN[editing]); // eingebaute Typen sind ihre eigene Vorlage
+          fields = cloneFields((t || GENRES.sonstiges).fields);
+          fieldsTouched = false;
+          $("#tf-more", dlg).open = false;
+          drawFields();
+          msg.textContent = t ? "Eine Farbe gilt sofort, Name und Angaben mit „Fertig“." : "";
           msg.style.color = "";
           form.hidden = false;
           render();
@@ -358,13 +560,16 @@
             render();
           } catch (e) { toast(e.message, { error: true }); }
         };
-        $("#tf-reset", dlg).onclick = async () => { // eingebauten Typ auf Name und Farbe ab Werk
+        $("#tf-reset", dlg).onclick = async () => { // eingebauten Typ auf Name, Farbe und Angaben ab Werk
           const d = Sheet.BUILTIN[editing];
           try {
             await saveTypes(customs().filter((x) => x.key !== editing));
             color = d.accent;
             syncColor();
             $("#tf-name", dlg).value = d.label;
+            fields = cloneFields(d.fields);
+            fieldsTouched = false;
+            drawFields();
             render();
             $("#type-add", dlg).hidden = true;
             $("#tf-reset", dlg).hidden = true;
@@ -389,9 +594,16 @@
             msg.textContent = `„${label}“ gibt es schon.`;
             return;
           }
-          if (editing) { // Bearbeiten abschließen: Namen (und Farbe) übernehmen
+          const list = cleanFields();
+          if (!list.length) {
+            msg.textContent = "Bitte mindestens eine Angabe eintragen.";
+            $("#tf-more", dlg).open = true;
+            return;
+          }
+          if (editing) { // Bearbeiten abschließen: Namen, Farbe und Angaben übernehmen
             try {
-              await saveEdit({ label, accent: color });
+              await saveEdit({ label, accent: color, fields: list,
+                ...(Sheet.BUILTIN[editing] ? {} : { base: baseSel.value }) });
               if (state.current && state.current.kind === editing) showEditor();
               closeForm();
             } catch (e) { msg.textContent = e.message; }
@@ -401,7 +613,7 @@
             .replace(/ß/g, "ss").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 30) || "typ";
           const key = `k-${slug}-${Math.random().toString(36).slice(2, 6)}`;
           try {
-            await saveTypes([...customs(), { key, label, accent: color, base: "sonstiges", fields: GENRES.sonstiges.fields }]);
+            await saveTypes([...customs(), { key, label, accent: color, base: baseSel.value, fields: list }]);
             close(key); // gleich ein Blatt dieses Typs anlegen
           } catch (e) { msg.textContent = e.message; }
         };
@@ -457,6 +669,7 @@
           item.short_title = saved.short_title;
           item.title = saved.title;
           item.kind = saved.kind;
+          item.updated = saved.updated;
           item.person = (saved.fields.find((f) => f.value) || {}).value || "";
           renderList();
         } else {
@@ -468,6 +681,23 @@
       }
     })();
     return state.saving;
+  }
+
+  // Fenster wird geschlossen: Die letzte Änderung noch abschicken. „keepalive“ sorgt dafür,
+  // dass der Browser die Anfrage auch nach dem Schließen zu Ende führt.
+  function saveOnLeave() {
+    if (!state.current || !state.dirty || locked) return;
+    clearTimeout(state.saveTimer);
+    const body = JSON.stringify(state.current);
+    try {
+      fetch("/api/sheets", {
+        method: "POST",
+        keepalive: new Blob([body]).size < 60000, // größere Anfragen lässt der Browser so nicht zu
+        headers: Start.headers({ "Content-Type": "application/json", "X-App": "1" }),
+        body,
+      }).catch(() => {});
+      state.dirty = false;
+    } catch (_) { /* egal */ }
   }
 
   async function flushSave() {
@@ -488,11 +718,15 @@
       const { lookup, ai_checks, ...sheet } = state.current;
       $("#preview").contentWindow.postMessage(
         { type: "render", sheet: JSON.parse(JSON.stringify(sheet)), headerRight: state.settings.header_right,
-          settings: designSettings(state.designOverride || state.settings) },
+          settings: designSettings(state.designOverride || state.settings), assetKey: state.assetKey },
         location.origin
       );
     });
   }
+
+  // Adresse des Bildes eines Blatts (mit dem Schlüssel für Bilder)
+  const imageUrl = (s) => `/data/${encodeURIComponent(s.id)}/${encodeURIComponent(s.image.file)}` +
+    `?v=${encodeURIComponent(s.image.v || 0)}&k=${encodeURIComponent(state.assetKey)}`;
 
   const DESIGN_KEYS = ["font_head", "font_body", "font_info", "size_title", "size_fields", "size_info"];
   function designSettings(src) {
@@ -553,7 +787,7 @@
     <section class="section">
       <h3>Grunddaten</h3>
       <div class="grid2">
-        <div class="row"><label for="f-kind">Art</label>
+        <div class="row"><label for="f-kind">Typ</label>
           <select id="f-kind">${GENRES[s.kind] ? "" : `<option value="${esc(s.kind)}" selected>(entfernter Typ)</option>`}${Object.entries(GENRES).filter(([k, g]) => !g.hidden || k === s.kind)
             .map(([k, g]) => `<option value="${k}" ${s.kind === k ? "selected" : ""}>${esc(g.label)}</option>`)
             .join("")}</select></div>
@@ -901,7 +1135,7 @@
        ${imgs.length ? `<div class="sug-images" role="radiogroup" aria-label="Bild wählen">
          <label class="sug-img sug-keep" title="${hasImage ? "Aktuelles Bild behalten" : "Kein Bild"}"><input type="radio" name="sug-img" value="keep" ${imgDefault === "keep" ? "checked" : ""}>
            ${hasImage
-             ? `<img src="/data/${encodeURIComponent(s.id)}/${encodeURIComponent(s.image.file)}?v=${encodeURIComponent(s.image.v || 0)}" alt="Aktuelles Bild"><span class="sug-badge">aktuell</span>`
+             ? `<img src="${esc(imageUrl(s))}" alt="Aktuelles Bild"><span class="sug-badge">aktuell</span>`
              : `<span>Kein Bild</span>`}</label>
          ${imgs.map((im, i) => `<label class="sug-img" title="${esc(im.title)}">
            <input type="radio" name="sug-img" value="${i}" ${imgDefault === String(i) ? "checked" : ""}>
@@ -1284,9 +1518,16 @@
     btn.disabled = true;
     const label = btn.textContent;
     btn.textContent = "Schreibt …";
-    box.innerHTML = `<div class="ai-proposal ai-wait">${busyHtml("Die KI schreibt einen Vorschlag … das kann ein paar Sekunden dauern.")}</div>`;
+    const ctrl = new AbortController();
+    box.innerHTML = `<div class="ai-proposal ai-wait">${busyHtml("Die KI schreibt einen Vorschlag … das kann ein paar Sekunden dauern.")}
+      <button type="button" class="btn btn-small" id="ai-cancel">Abbrechen</button></div>`;
+    $("#ai-cancel", box).onclick = () => {
+      ctrl.abort();
+      post("/api/ai/cancel", {}).catch(() => {}); // laufende Hilfsprogramme (Claude Code, Kurzbefehl) beenden
+    };
     try {
-      const r = await post("/api/ai/infotext", { id: s.id, wish, previous: wish ? s.infotext : "" });
+      const r = await request("POST", "/api/ai/infotext", { id: s.id, wish, previous: wish ? s.infotext : "" },
+        { signal: ctrl.signal });
       if (s !== state.current) return;
       const ok = r.words >= 80 && r.words <= 150;
       box.innerHTML = `<div class="ai-proposal">
@@ -1311,6 +1552,7 @@
         toast("Infotext übernommen – bitte noch einmal lesen und anpassen.");
       };
     } catch (e) {
+      if (e.code === "abort") { box.innerHTML = ""; return; }
       box.innerHTML = `<div class="ai-proposal ai-error">${esc(e.message)}
         <div class="ai-actions"><button type="button" class="btn btn-small" id="ai-open-settings">KI-Einstellungen</button></div></div>`;
       $("#ai-open-settings", box).onclick = aiSettingsFlow;
@@ -1323,7 +1565,7 @@
   function logError(message) {
     fetch("/api/log", {
       method: "POST",
-      headers: { "Content-Type": "application/json", "X-App": "1" },
+      headers: Start.headers({ "Content-Type": "application/json", "X-App": "1" }),
       body: JSON.stringify({ message }),
     }).catch(() => {});
   }
@@ -1486,7 +1728,7 @@
       const x = clamp(s.image.x, 50, 0, 100), y = clamp(s.image.y, 25, 0, 100);
       const z = clamp(s.image.zoom, 1, 1, 3);
       const off = (v) => (-(z - 1) * v).toFixed(2);
-      el.innerHTML = `<img alt="" src="/data/${encodeURIComponent(s.id)}/${encodeURIComponent(s.image.file)}?v=${encodeURIComponent(s.image.v || 0)}"
+      el.innerHTML = `<img alt="" src="${esc(imageUrl(s))}"
         style="position:absolute;width:${z * 100}%;height:${z * 100}%;left:${off(x)}%;top:${off(y)}%;object-fit:cover;object-position:${x}% ${y}%">`;
       // Lässt sich in eine Richtung nichts verschieben (Bild passt genau), Hinweis zeigen.
       const img = el.querySelector("img");
@@ -1543,10 +1785,10 @@
     }
     if (st) { st.innerHTML = busyHtml("Code wird erzeugt …"); st.className = "link-status"; }
     try {
-      const { svg } = await post("/api/code", { service, url });
+      const { svg, note } = await post("/api/code", { service, url });
       if (s !== state.current || s.links[service] !== url) return;
       s.codes[service] = svg;
-      if (st) { st.textContent = "Code erstellt"; st.className = "link-status ok"; }
+      if (st) { st.textContent = note || "Code erstellt"; st.className = "link-status " + (note ? "warn" : "ok"); }
     } catch (e) {
       if (s !== state.current) return;
       s.codes[service] = "";
@@ -1568,11 +1810,27 @@
       btns.forEach((b) => (b.disabled = !state.current));
     }
   }
-  async function exportPdfInner(mode, ids) {
+  async function exportPdfInner(mode, ids, overwrite) {
     await flushSave();
     setStatus("PDF wird erstellt …");
     try {
-      const res = await post("/api/export", { mode, ids });
+      const res = await post("/api/export", { mode, ids, overwrite: overwrite || "ask" });
+      if (res.exists) { // gleichnamige Datei: nicht stillschweigend überschreiben
+        setStatus("Gespeichert");
+        const choice = await dialog(
+          `<h2>Diese PDF-Datei gibt es schon</h2>
+           <p>„${esc(res.name)}“ liegt bereits im PDF-Ordner. Soll sie ersetzt werden?</p>
+           <div class="buttons"><button type="button" class="btn" data-close>Abbrechen</button>
+           <button type="button" class="btn" id="dlg-new">Beide behalten</button>
+           <button type="button" class="btn btn-primary" id="dlg-ok">Ersetzen</button></div>`,
+          (dlg, close) => {
+            $("#dlg-new", dlg).onclick = () => close("new");
+            $("#dlg-ok", dlg).onclick = () => close("replace");
+          }
+        );
+        if (choice) await exportPdfInner(mode, ids, choice);
+        return;
+      }
       setStatus("Gespeichert");
       toast(`PDF gespeichert: ${res.name}`, { action: { label: "Ordner öffnen", run: () => post("/api/open", { what: "export" }) } });
     } catch (e) {
@@ -1740,12 +1998,24 @@
       allgemein: `
         <div class="row"><label for="set-head">Kopfzeile rechts</label>
           <input type="text" id="set-head" value="${esc(s.header_right)}"></div>
+        <div class="row"><label for="set-theme">Erscheinungsbild der App</label>
+          <select id="set-theme">
+            <option value="" ${sel(s.theme || "", "")}>Wie das System (hell oder dunkel)</option>
+            <option value="light" ${sel(s.theme, "light")}>Hell</option>
+            <option value="dark" ${sel(s.theme, "dark")}>Dunkel</option>
+          </select>
+          <span class="hint">Die Blätter selbst bleiben immer weiß.</span></div>
         ${pathRow("set-data", "data", "Ordner für die Blätter", s.data_dir, s.data_dir_effective, "Leer lassen für den Standardordner.")}
         ${pathRow("set-export", "export", "Ordner für PDFs", s.export_dir, s.export_dir_effective, "")}
         <div class="row" style="margin-top:14px"><label for="set-browser">Eigener Browser-Pfad (optional)</label>
           <input type="text" id="set-browser" value="${esc(s.browser_path)}" placeholder="leer = automatisch" spellcheck="false">
           <span class="hint" id="pdf-engine">PDF-Export nutzt: ${s.pdf_engine_effective ? esc(s.pdf_engine_effective) : "noch kein Chromium vorhanden – bis dahin „Drucken …“ nutzen."}</span>
-          ${s.pdf_engine_effective ? "" : `<div class="set-actions"><button type="button" class="btn btn-small" id="get-chromium">Chromium laden (ca. 100 MB)</button></div>`}</div>`,
+          ${!s.pdf_engine_effective
+            ? `<div class="set-actions"><button type="button" class="btn btn-small" id="get-chromium">Chromium laden (ca. 100 MB)</button></div>`
+            : s.chromium_version
+              ? `<div class="set-actions"><button type="button" class="btn btn-small btn-ghost" id="get-chromium" data-update="1">Chromium jetzt aktualisieren</button>
+                 <span class="hint" id="chromium-info">Geladen: Version ${esc(s.chromium_version)}. Die App erneuert ihn alle zwei Monate von selbst.</span></div>`
+              : ""}</div>`,
 
       blatt: `
         <div class="design-grid">
@@ -1764,7 +2034,7 @@
             </div>
             <div class="set-actions"><button type="button" class="btn btn-small btn-ghost" id="ds-reset">↺ Standard wiederherstellen</button></div>
             <p class="hint">Leeres Feld = Standardgröße. Lange Titel werden automatisch etwas kleiner gesetzt.
-              Die Schriften kommen von Google Fonts; Systemschriften (Georgia, Helvetica/Arial) brauchen keinen Download.</p>
+              Alle Schriften liegen der App bei – es wird nichts aus dem Internet geladen.</p>
           </div>
           <div class="design-preview">
             <iframe id="ds-preview" src="preview.html" title="Vorschau der Schriften"></iframe>
@@ -1776,7 +2046,7 @@
         <p class="hint">„Automatisch ausfüllen“ sucht in der deutschen und englischen Wikipedia, in Wikidata und auf Wikimedia Commons.</p>
         <div class="row"><label for="set-contact">Kontakt-E-Mail für Wikipedia (optional, empfohlen)</label>
           <input type="text" id="set-contact" value="${esc(s.wiki_contact)}" placeholder="z. B. name@schule.de" autocomplete="off" spellcheck="false">
-          <span class="hint">Wikimedia bittet Programme, eine Kontaktadresse mitzuschicken. Sie wird nur an Wikipedia/Wikidata übermittelt.</span></div>
+          <span class="hint">Wikimedia bittet Programme, eine Kontaktadresse mitzuschicken. Sie wird nur an die Wikimedia-Dienste (Wikipedia, Wikidata, Commons) übermittelt.</span></div>
         <div class="set-actions"><button type="button" class="btn btn-small" id="diag">Verbindungen prüfen</button>
           <button type="button" class="btn btn-small btn-ghost" id="clear-cache">Zwischenspeicher leeren</button></div>
         <div id="diag-out" class="diag-out"></div>`,
@@ -1898,15 +2168,15 @@
 
       hilfe: `
         <p>Stück der Woche, Version ${esc(APP_VERSION)}.</p>
-        <p class="hint">Installiert in: <code>${esc(s.app_dir_effective || "")}</code><br>
-          Update: neue Version herunterladen und darin <code>bash install.sh</code> ausführen – Blätter und Einstellungen bleiben erhalten.</p>
+        <p class="hint">Installiert in: <code>${esc(s.app_dir_effective || "")}</code></p>
         <p class="hint">Bei Problemen hilft das Fehlerprotokoll: Dort steht jeder Fehler mit Uhrzeit. Die Datei <code>protokoll.txt</code> kannst du weitergeben – API-Schlüssel werden darin unkenntlich gemacht.</p>
         <div class="set-actions">
           <button type="button" class="btn btn-small" data-open-folder="log">Fehlerprotokoll öffnen</button>
           <button type="button" class="btn btn-small" id="diag2">Verbindungen prüfen</button></div>
         <div id="diag-out2" class="diag-out"></div>
         <fieldset class="set-group"><legend>Updates</legend>
-          <p class="hint" id="upd-info">Neue Versionen kommen von GitHub${s.update_repo_effective ? ` (${esc(s.update_repo_effective)})` : ""}.</p>
+          <p class="hint" id="upd-info">Neue Versionen kommen von GitHub${s.update_repo_effective ? ` (${esc(s.update_repo_effective)})` : ""}
+            und lassen sich hier mit einem Klick einspielen – Blätter, Einstellungen und Schlüssel bleiben erhalten.</p>
           <label class="check"><input type="checkbox" id="set-upd-auto" ${s.update_auto !== "0" ? "checked" : ""}> Beim Start automatisch nach Updates schauen</label>
           <div class="set-actions"><button type="button" class="btn btn-small" id="upd-check">Jetzt nach Updates suchen</button></div>
           ${resultRow("upd-out")}</fieldset>
@@ -1959,6 +2229,7 @@
           const promptText = $("#ai-prompt", dlg).value.trim();
           return {
             header_right: $("#set-head", dlg).value,
+            theme: $("#set-theme", dlg).value,
             data_dir: $("#set-data", dlg).value,
             export_dir: $("#set-export", dlg).value,
             browser_path: $("#set-browser", dlg).value,
@@ -1988,13 +2259,20 @@
         let baseline = fingerprint();
         const isDirty = () => fingerprint() !== baseline;
 
+        $("#set-theme", dlg).onchange = (e) => Start.theme(e.target.value);
+        dlg.addEventListener("close", () => Start.theme(state.settings.theme || "", true), { once: true });
+
         const statusEl = $("#set-status", dlg);
         const setInfo = (text, color) => {
           statusEl.textContent = text;
           statusEl.style.color = color || "";
         };
-        dlg.addEventListener("input", () => { if (isDirty()) setInfo("Nicht gespeicherte Änderungen", ""); });
-        dlg.addEventListener("change", () => { if (isDirty()) setInfo("Nicht gespeicherte Änderungen", ""); });
+        // Nur solange dieser Dialog offen ist (das Dialog-Element wird wiederverwendet)
+        const live = new AbortController();
+        dlg.addEventListener("close", () => live.abort(), { once: true });
+        const noteDirty = () => { if (isDirty()) setInfo("Nicht gespeicherte Änderungen", ""); };
+        dlg.addEventListener("input", noteDirty, { signal: live.signal });
+        dlg.addEventListener("change", noteDirty, { signal: live.signal });
 
         // Speichern, ohne den Dialog zu schließen
         const save = async () => {
@@ -2104,11 +2382,19 @@
           getChromium.disabled = true;
           out.style.color = "";
           out.innerHTML = busyHtml("Lade Chromium … (kann einige Minuten dauern)");
+          const updating = getChromium.dataset.update === "1";
+          if (updating) out.innerHTML = busyHtml("Suche nach einer neueren Version …");
           try {
             const r = await post("/api/chromium", {});
             out.style.color = "var(--ok)";
             out.textContent = "PDF-Export nutzt: " + r.engine;
-            getChromium.remove();
+            if (updating) {
+              $("#chromium-info", dlg).textContent = r.changed
+                ? `✓ Aktualisiert auf Version ${r.version}.` : `✓ Version ${r.version} ist die neueste.`;
+              getChromium.disabled = false;
+            } else {
+              getChromium.remove();
+            }
           } catch (e) {
             out.style.color = "var(--danger)";
             out.textContent = e.message;
@@ -2166,7 +2452,7 @@
           delete base.lookup;
           delete base.ai_checks;
           frame.contentWindow.postMessage({ type: "render", sheet: base, headerRight: $("#set-head", dlg).value,
-            settings: designValues() }, location.origin);
+            settings: designValues(), assetKey: state.assetKey }, location.origin);
         };
         const onFrameMessage = (e) => {
           if (e.source !== frame.contentWindow || e.origin !== location.origin || !e.data) return;
@@ -2260,9 +2546,10 @@
   // Nach dem Speichern der Einstellungen: Liste, Editor und Vorschau anpassen
   async function applySettings(before) {
     const after = state.settings;
+    Start.theme(after.theme || "", true);
     if ((before.custom_kinds || "[]") !== (after.custom_kinds || "[]")) {
       applyKinds();
-      if (state.current) showEditor(); // Auswahl der Arten im Editor auffrischen
+      if (state.current) showEditor(); // Auswahl der Typen im Editor auffrischen
     }
     if ((before.data_dir || "") !== (after.data_dir || "")) {
       await refreshList();
@@ -2362,7 +2649,29 @@
   // ------------------------------------------------------------------ Start
 
   async function init() {
+    // Zugang: Hat das Fenster statt des Schlüssels eine Einmal-Eintrittskarte bekommen, wird sie eingetauscht.
+    if (!Start.key() && Start.ticket()) {
+      try {
+        const r = await fetch("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-App": "1" },
+          body: JSON.stringify({ ticket: Start.ticket() }),
+        });
+        if (r.ok) Start.setKey((await r.json()).key);
+      } catch (_) { /* dann unten der Hinweis */ }
+    }
+    if (!Start.key()) { lockedOut(); return; }
+
     renderGenreFilter();
+    try { state.sort = localStorage.getItem("sdw-sort") || "updated"; } catch (_) { /* egal */ }
+    if (!SORTS[state.sort]) state.sort = "updated";
+    $("#sort").value = state.sort;
+    $("#sort").onchange = (e) => {
+      state.sort = e.target.value;
+      try { localStorage.setItem("sdw-sort", state.sort); } catch (_) { /* egal */ }
+      renderList();
+    };
+    $("#btn-trash").onclick = trashFlow;
     $("#search").oninput = (e) => { state.search = e.target.value; renderList(); };
     $("#btn-new").onclick = newSheetFlow;
     $("#btn-pdf-a5").onclick = () => exportPdf("a5", [state.current.id]);
@@ -2380,18 +2689,25 @@
     };
     $("#btn-delete").onclick = async () => {
       const cur = state.current;
+      const name = cur.short_title || cur.title || "Ohne Titel";
       const ok = await confirmDialog("Blatt löschen?",
-        `„${cur.short_title || cur.title || "Ohne Titel"}“ wird in den Papierkorb-Ordner der App verschoben.`, "Löschen", true);
+        `„${name}“ wird in den Papierkorb verschoben. Von dort (unten links) lässt es sich wiederherstellen.`, "Löschen", true);
       if (!ok) return;
       clearTimeout(state.saveTimer);
       state.dirty = false;
       // Ein laufendes Speichern erst abwarten – sonst könnte es das Blatt wieder anlegen
       if (state.saving) { try { await state.saving; } catch (_) { /* egal */ } }
       try {
-        await post(`/api/sheets/${encodeURIComponent(cur.id)}/delete`, {});
+        const r = await post(`/api/sheets/${encodeURIComponent(cur.id)}/delete`, {});
         state.current = null;
-        await refreshList();
+        await Promise.all([refreshList(), refreshTrash()]);
         showEditor();
+        toast(`„${name}“ liegt jetzt im Papierkorb.`, r.trash ? { action: { label: "Rückgängig", run: async () => {
+          try {
+            const sheet = await restoreFromTrash(r.trash);
+            await openSheet(sheet.id);
+          } catch (e) { toast(e.message, { error: true }); }
+        } } } : {});
       } catch (e) { toast(e.message, { error: true }); }
     };
     document.addEventListener("keydown", (e) => {
@@ -2401,10 +2717,10 @@
     // Ändert sich der Platz für die Vorschau (z. B. durch den Hinweis „passt nicht“),
     // wird sie neu vermessen.
     if (window.ResizeObserver) new ResizeObserver(() => sizePreview()).observe($("#preview-box"));
-    window.addEventListener("beforeunload", () => { if (state.dirty) saveNow(); });
+    window.addEventListener("beforeunload", saveOnLeave);
 
     // Lebenszeichen an die App: wird das Fenster geschlossen, beendet sie sich.
-    const ping = () => fetch("/api/ping")
+    ping = () => fetch("/api/ping", { headers: Start.headers() })
       .then((r) => r.json())
       .then((d) => {
         appBack();
@@ -2412,6 +2728,10 @@
           // Läuft im Hintergrund schon eine neuere Version, die Seite einfach neu laden
           if (!state.dirty) location.reload();
           else setStatus("Die App wurde aktualisiert – bitte kurz warten, dann wird neu geladen.", true);
+        } else if (d.auth === false) {
+          lockedOut(); // die App wurde neu gestartet und kennt dieses Fenster nicht mehr
+        } else {
+          unlock();
         }
       })
       .catch(() => appGone());
@@ -2420,15 +2740,20 @@
     window.addEventListener("pageshow", ping);
     document.addEventListener("visibilitychange", () => { if (!document.hidden) ping(); });
     window.addEventListener("pagehide", () => {
+      saveOnLeave();
       try {
-        fetch("/api/bye", { method: "POST", keepalive: true, headers: { "X-App": "1", "Content-Type": "application/json" }, body: "{}" });
+        fetch("/api/bye", { method: "POST", keepalive: true,
+          headers: Start.headers({ "X-App": "1", "Content-Type": "application/json" }), body: "{}" });
       } catch (_) { /* egal */ }
     });
 
     try {
       state.settings = await get("/api/settings");
+      state.assetKey = state.settings.asset_key || "";
+      Start.theme(state.settings.theme || "", true);
       applyKinds();
       await refreshList();
+      refreshTrash();
     } catch (e) {
       setStatus("Verbindung zur App fehlgeschlagen: " + e.message, true);
       return;

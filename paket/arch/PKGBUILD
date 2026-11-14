@@ -7,11 +7,11 @@
 # Blätter und Einstellungen liegen im Benutzerordner und bleiben bei Updates erhalten.
 
 pkgname=stueck-der-woche
-pkgver=0.6.1.2
+pkgver=0.6.9
 pkgrel=1
 pkgdesc="Übersichtsblätter „Stück der Woche“ für den Musikunterricht"
 arch=('any')
-license=('EUPL-1.2' 'MIT')
+license=('EUPL-1.2' 'MIT' 'OFL-1.1')
 depends=('python')
 optdepends=(
   'chromium: eigenes App-Fenster und PDF-Export (sonst lädt die App einen unsichtbaren Chromium)'
@@ -64,4 +64,6 @@ app/qrencoder.py stammt aus ReportLab (reportlab/graphics/barcode/qrencoder.py).
 Copyright (c) 2009 Kazuhiko Arase; Copyright (c) 2014 Open End AB.
 Licensed under the MIT license: http://www.opensource.org/licenses/mit-license.php
 EOF
+  # Lizenz der mitgelieferten Schriften
+  install -Dm644 "$_src/web/fonts/LIZENZ.txt" "$pkgdir/usr/share/licenses/$pkgname/schriften-OFL.txt"
 }

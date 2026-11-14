@@ -37,7 +37,8 @@ def _one(text: str) -> str:
     url = API + "?" + urllib.parse.urlencode({"q": text, "langpair": "en|de"})
     try:
         from .wiki import user_agent
-        req = urllib.request.Request(url, headers={"User-Agent": user_agent()})
+        # ohne Kontaktadresse – die ist nur für Wikimedia gedacht
+        req = urllib.request.Request(url, headers={"User-Agent": user_agent(contact=False)})
         with urllib.request.urlopen(req, timeout=8) as resp:
             data = json.load(resp)
         result = ((data.get("responseData") or {}).get("translatedText") or "").strip()

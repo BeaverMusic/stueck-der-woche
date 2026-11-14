@@ -3,9 +3,12 @@
 <head>
 <meta charset="utf-8">
 <title>Vorschau</title>
+<link rel="stylesheet" href="fonts/fonts.css">
 <link rel="stylesheet" href="sheet.css">
 <style>
-  html, body { margin: 0; background: transparent; overflow: hidden; }
+  /* Höhe 100 %: Sonst schneidet der Seitenrumpf ein vergrößertes Blatt unten ab
+     (auf großen Bildschirmen wird die Vorschau größer als das Blatt selbst). */
+  html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
   #stage { transform-origin: 0 0; box-shadow: 0 1px 3px rgba(0,0,0,.18), 0 8px 24px rgba(0,0,0,.10); width: 148mm; }
 </style>
 </head>

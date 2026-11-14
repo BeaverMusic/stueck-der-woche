@@ -12,8 +12,9 @@ SPOTIFY_RE = re.compile(
 )
 
 
-def qr_svg(url: str, border: int = 2) -> str:
-    """Erzeugt einen QR-Code (Fehlerkorrektur M) als skalierbares SVG."""
+def qr_svg(url: str, border: int = 4) -> str:
+    """Erzeugt einen QR-Code (Fehlerkorrektur M) als skalierbares SVG. Der weiße Rand
+    ist vier Kästchen breit – so verlangt es die Norm, damit jedes Gerät den Code erkennt."""
     url = (url or "").strip()
     if not url:
         raise ValueError("Kein Link angegeben")
@@ -119,10 +120,19 @@ def clean_svg(svg: str) -> str:
     return build(root)
 
 
-def make_code(service: str, url: str) -> str:
+def make_code(service: str, url: str) -> tuple[str, str]:
+    """Gibt (SVG, Hinweis) zurück. Der Hinweis ist nur gesetzt, wenn statt des
+    Spotify-Codes ersatzweise ein QR-Code erzeugt wurde."""
     url = (url or "").strip()
     if service == "spotify":
-        return spotify_svg(url)
+        spotify_uri(url)  # prüft den Link (ungültige Links nicht als QR-Code ausgeben)
+        try:
+            return spotify_svg(url), ""
+        except RuntimeError as exc:
+            # Spotifys Code-Dienst ist nicht erreichbar: Ein QR-Code führt zum selben Ziel.
+            storage.log("Code", f"Spotify-Code nicht verfügbar ({exc}) – QR-Code als Ersatz")
+            link = url if url.startswith("http") else "https://open.spotify.com/" + "/".join(url.split(":")[1:3])
+            return qr_svg(link), "Der Spotify-Code ist gerade nicht abrufbar – ersatzweise wurde ein QR-Code erstellt."
     if service == "youtube":
         if not re.search(r"(youtube\.com|youtu\.be)/", url):
             raise ValueError("Das ist kein YouTube-Link")
@@ -131,4 +141,4 @@ def make_code(service: str, url: str) -> str:
             raise ValueError("Das ist kein Apple-Music-Link (music.apple.com/…)")
     else:
         raise ValueError("Unbekannter Dienst")
-    return qr_svg(url)
+    return qr_svg(url), ""

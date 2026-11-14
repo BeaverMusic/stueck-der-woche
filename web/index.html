@@ -4,6 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Stück der Woche</title>
+<meta name="color-scheme" content="light dark">
+<script src="start.js"></script>
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
@@ -32,8 +34,17 @@
     <button type="button" id="btn-new" class="btn btn-primary btn-block">+ Neues Blatt</button>
     <label class="visually-hidden" for="search">Blätter durchsuchen</label>
     <input id="search" type="search" placeholder="Suchen …" autocomplete="off">
-    <div id="genre-filter" class="chips" role="group" aria-label="Nach Genre filtern"></div>
+    <div id="genre-filter" class="chips" role="group" aria-label="Nach Typ filtern"></div>
+    <div class="list-tools">
+      <label for="sort">Sortiert nach</label>
+      <select id="sort">
+        <option value="updated">zuletzt bearbeitet</option>
+        <option value="created">zuletzt angelegt</option>
+        <option value="title">Titel A–Z</option>
+      </select>
+    </div>
     <ul id="sheet-list" class="sheet-list"></ul>
+    <button type="button" id="btn-trash" class="link-btn trash-link" hidden></button>
   </aside>
 
   <main id="editor" class="editor" hidden></main>
@@ -52,6 +63,17 @@
 </div>
 
 <dialog id="dlg" class="dialog"></dialog>
+<div id="locked" class="locked" role="alertdialog" aria-labelledby="locked-title" hidden>
+  <div class="locked-box">
+    <h2 id="locked-title">Dieses Fenster ist nicht mit der App verbunden</h2>
+    <p>Aus Sicherheitsgründen arbeitet „Stück der Woche“ nur mit dem Fenster zusammen, das die App selbst
+      geöffnet hat. So kommen andere Programme und Benutzer dieses Rechners nicht an deine Blätter und Schlüssel.</p>
+    <p><b>Bitte öffne die App über ihr Symbol</b> (Programme, Dock oder Anwendungsmenü). Hat sich gerade
+      ein neues Fenster geöffnet – etwa nach einem Update –, arbeite dort weiter. Dieses Fenster kannst du schließen.</p>
+    <p id="locked-dirty" class="locked-warn" hidden>In diesem Fenster gibt es noch ungespeicherte Änderungen.
+      Kopiere dir wichtige Texte heraus, bevor du es schließt.</p>
+  </div>
+</div>
 <div id="toast" class="toast" role="status" hidden></div>
 
 <script src="sheet.js"></script>

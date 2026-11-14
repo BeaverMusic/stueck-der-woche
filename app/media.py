@@ -111,30 +111,22 @@ def youtube(query: str) -> list[dict]:
     hit = _cached(ck)
     if hit is not None:
         return hit
+    # Der Schlüssel reist als Kopfzeile mit, nicht in der Adresse (die landet eher in Protokollen)
+    auth = {"X-Goog-Api-Key": key}
     try:
         data = _request("https://www.googleapis.com/youtube/v3/search?" + urllib.parse.urlencode({
             "part": "snippet", "type": "video", "maxResults": 10, "q": query,
-            "regionCode": "DE", "relevanceLanguage": "de", "key": key,
-        }))
+            "regionCode": "DE", "relevanceLanguage": "de",
+        }), auth)
         ids = [it["id"]["videoId"] for it in data.get("items", []) if it.get("id", {}).get("videoId")]
         details = {}
         if ids:
             more = _request("https://www.googleapis.com/youtube/v3/videos?" + urllib.parse.urlencode({
-                "part": "contentDetails,statistics", "id": ",".join(ids), "key": key,
-            }))
+                "part": "contentDetails,statistics", "id": ",".join(ids),
+            }), auth)
             details = {v["id"]: v for v in more.get("items", [])}
     except urllib.error.HTTPError as exc:
-        body = _http_error_body(exc)
-        reasons = " ".join(e.get("reason", "") for e in (body.get("error", {}).get("errors") or []))
-        message = body.get("error", {}).get("message", "")
-        if "quota" in reasons.lower():
-            raise MediaError("Das YouTube-Tageskontingent ist aufgebraucht (morgen geht es wieder)", "quota")
-        if "API key not valid" in message or "keyInvalid" in reasons or exc.code == 400:
-            raise MediaError("Der YouTube-Schlüssel ist ungültig – bitte in den Einstellungen prüfen", "badkey")
-        if exc.code == 403:
-            raise MediaError("YouTube verweigert den Zugriff – ist die „YouTube Data API v3“ im "
-                             "Google-Cloud-Projekt aktiviert?", "badkey")
-        raise MediaError(f"YouTube meldet einen Fehler (HTTP {exc.code})")
+        raise _youtube_error(exc)
     except Exception as exc:
         raise MediaError("YouTube ist gerade nicht erreichbar (Internetverbindung?)") from exc
 
@@ -160,6 +152,37 @@ def youtube(query: str) -> list[dict]:
         r["duration"] = _duration(r["duration_ms"])
     _store(ck, results)
     return results
+
+
+def _youtube_error(exc: urllib.error.HTTPError) -> MediaError:
+    body = _http_error_body(exc)
+    error = body.get("error") if isinstance(body.get("error"), dict) else {}
+    reasons = " ".join(str(e.get("reason", "")) for e in (error.get("errors") or []) if isinstance(e, dict))
+    message = str(error.get("message", ""))
+    if "quota" in reasons.lower():
+        return MediaError("Das YouTube-Tageskontingent ist aufgebraucht (morgen geht es wieder)", "quota")
+    if "API key not valid" in message or "keyInvalid" in reasons or exc.code == 400:
+        return MediaError("Der YouTube-Schlüssel ist ungültig – bitte in den Einstellungen prüfen", "badkey")
+    if exc.code == 403:
+        return MediaError("YouTube verweigert den Zugriff – ist die „YouTube Data API v3“ im "
+                          "Google-Cloud-Projekt aktiviert?", "badkey")
+    return MediaError(f"YouTube meldet einen Fehler (HTTP {exc.code})")
+
+
+def _youtube_test() -> str:
+    """Prüft den Schlüssel mit einer Abfrage, die fast nichts vom Tageskontingent kostet
+    (1 Einheit statt gut 100 für eine Suche)."""
+    key = _settings().get("youtube_key", "").strip()
+    if not key:
+        raise MediaError("Kein YouTube-Schlüssel hinterlegt", "nokey")
+    try:
+        _request("https://www.googleapis.com/youtube/v3/videoCategories?part=snippet&regionCode=DE",
+                 {"X-Goog-Api-Key": key})
+    except urllib.error.HTTPError as exc:
+        raise _youtube_error(exc)
+    except Exception as exc:
+        raise MediaError("YouTube ist gerade nicht erreichbar (Internetverbindung?)") from exc
+    return "Funktioniert – der Schlüssel ist gültig."
 
 
 def _unescape(text: str) -> str:
@@ -206,11 +229,14 @@ def _spotify_token() -> str:
 
 
 def spotify(query: str) -> list[dict]:
-    token = _spotify_token()
+    s = _settings()
+    if not s.get("spotify_id", "").strip() or not s.get("spotify_secret", "").strip():
+        raise MediaError("Keine Spotify-Zugangsdaten hinterlegt", "nokey")
     ck = "sp:" + query.lower()
     hit = _cached(ck)
     if hit is not None:
-        return hit
+        return hit  # schon bekannt: keine Anmeldung bei Spotify nötig
+    token = _spotify_token()
     url = "https://api.spotify.com/v1/search?" + urllib.parse.urlencode(
         {"q": query, "type": "track", "limit": 10, "market": "DE"})
     try:
@@ -297,14 +323,17 @@ def search(service: str, query: str) -> list[dict]:
 
 
 def test(service: str) -> str:
-    """Prüft die Zugangsdaten mit einer kleinen Suche (ohne Zwischenspeicher)."""
-    probe = f"Beethoven Mondscheinsonate {int(time.time())}" if service == "youtube" else "Beethoven Mondscheinsonate"
+    """Prüft die Zugangsdaten (ohne Zwischenspeicher)."""
+    if service == "youtube":
+        return _youtube_test()
+    if service not in SERVICES:
+        raise MediaError("Unbekannter Dienst")
+    probe = "Beethoven Mondscheinsonate"
     if service == "spotify":
         _token.update(value="", expires=0)
-    results = SERVICES[service](probe)
-    if service == "youtube":
         try:
-            _cache_path("yt:" + probe.lower()).unlink()
-        except Exception:
+            _cache_path("sp:" + probe.lower()).unlink()
+        except OSError:
             pass
+    results = SERVICES[service](probe)
     return f"Funktioniert – {len(results)} Treffer bei der Testsuche."

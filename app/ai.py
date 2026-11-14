@@ -20,7 +20,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -148,6 +150,48 @@ def find_claude() -> str | None:
     return None
 
 
+# Laufende Hilfsprogramme (Claude Code, Kurzbefehle) – damit „Abbrechen“ sie beenden kann
+_running: set = set()
+_running_lock = threading.Lock()
+_cancelled: set = set()
+
+
+def _run(cmd: list, prompt: str, timeout: int, **kwargs) -> subprocess.CompletedProcess:
+    """Wie subprocess.run, aber abbrechbar (siehe cancel)."""
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True, **kwargs)
+    with _running_lock:
+        _running.add(proc)
+    try:
+        out, err = proc.communicate(prompt, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.communicate()
+        raise
+    finally:
+        with _running_lock:
+            _running.discard(proc)
+            was_cancelled = proc in _cancelled
+            _cancelled.discard(proc)
+    if was_cancelled:
+        raise AIError("Abgebrochen.")
+    return subprocess.CompletedProcess(cmd, proc.returncode, out, err)
+
+
+def cancel() -> int:
+    """Bricht laufende KI-Hilfsprogramme ab. Anfragen an Internetdienste laufen aus;
+    ihr Ergebnis wird von der Oberfläche verworfen."""
+    with _running_lock:
+        procs = list(_running)
+        _cancelled.update(procs)
+    for proc in procs:
+        try:
+            proc.terminate()
+        except Exception:
+            pass
+    return len(procs)
+
+
 _help_cache: dict = {}
 # Werkzeuge, die Claude Code bei älteren Versionen ausdrücklich verboten werden
 _ALL_TOOLS = ("Bash,Edit,MultiEdit,Write,Read,Glob,Grep,LS,WebFetch,WebSearch,NotebookEdit,NotebookRead,"
@@ -194,8 +238,7 @@ def _claude_code(prompt: str, model: str) -> str:
     env.setdefault("DISABLE_AUTOUPDATER", "1")  # kein Update mitten in einer Anfrage
     with tempfile.TemporaryDirectory(prefix="stueck-ki-") as cwd:  # leerer Arbeitsordner
         try:
-            proc = subprocess.run(cmd, input=prompt, capture_output=True, text=True, timeout=180,
-                                  cwd=cwd, env=env)
+            proc = _run(cmd, prompt, 180, cwd=cwd, env=env)
         except subprocess.TimeoutExpired:
             raise AIError("Claude Code hat nicht rechtzeitig geantwortet.")
     out = (proc.stdout or "").strip()
@@ -277,15 +320,46 @@ def _anthropic(prompt: str, key: str, model: str) -> str:
 # ------------------------------------------------------------------ Anbieter: OpenAI-kompatibel
 
 
+def _is_local(host: str) -> bool:
+    """Eigener Rechner oder Heimnetz – dort ist eine unverschlüsselte Adresse üblich (z. B. Ollama)."""
+    import ipaddress
+    host = (host or "").lower()
+    if host in ("localhost", "") or host.endswith((".local", ".lan", ".home", ".internal")) or "." not in host and ":" not in host:
+        return True
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return ip.is_loopback or ip.is_private or ip.is_link_local
+
+
+def _check_base(base: str, key: str) -> None:
+    """Einen Schlüssel nie unverschlüsselt (http) ins Internet schicken."""
+    parts = urllib.parse.urlsplit(base)
+    if parts.scheme not in ("http", "https") or not parts.hostname:
+        raise AIError("Die Adresse des KI-Dienstes muss mit https:// (oder bei lokalen Modellen http://) beginnen.")
+    if parts.scheme == "http" and key and not _is_local(parts.hostname):
+        raise AIError("Die Adresse des KI-Dienstes ist unverschlüsselt (http://) – der Schlüssel wird so nicht "
+                      "gesendet. Bitte eine Adresse mit https:// eintragen.")
+
+
 def _openai(prompt: str, base: str, key: str, model: str) -> str:
     if not base:
         raise AIError("Keine Adresse für den KI-Dienst hinterlegt.")
     if not model:
         raise AIError("Kein Modell gewählt – in den Einstellungen „Modelle laden“ und eines auswählen.")
+    _check_base(base, key)
     headers = {"Authorization": f"Bearer {key}"} if key else {}
-    data = _post_json(base.rstrip("/") + "/chat/completions",
-                      {"model": model, "temperature": 0.4,
-                       "messages": [{"role": "user", "content": prompt}]}, headers)
+    url = base.rstrip("/") + "/chat/completions"
+    body = {"model": model, "temperature": 0.4, "messages": [{"role": "user", "content": prompt}]}
+    try:
+        data = _post_json(url, body, headers)
+    except AIError as exc:
+        # Manche Modelle lassen keine eigene „temperature“ zu – dann ohne sie
+        if exc.status != 400 or "temperature" not in str(exc).lower():
+            raise
+        del body["temperature"]
+        data = _post_json(url, body, headers)
     try:
         return data["choices"][0]["message"]["content"] or ""
     except (KeyError, IndexError, TypeError):
@@ -330,6 +404,7 @@ def _gemini(prompt: str, key: str, model: str) -> str:
 def list_models(base: str, key: str) -> list[str]:
     if not base:
         raise AIError("Bitte zuerst die Adresse des Dienstes eintragen.")
+    _check_base(base, key)
     req = urllib.request.Request(base.rstrip("/") + "/models",
                                  headers={"User-Agent": USER_AGENT, **({"Authorization": f"Bearer {key}"} if key else {})})
     try:
@@ -376,9 +451,8 @@ def _apple(prompt: str, name: str) -> str:
                       "Einstellungen → KI-Anbindung anlegen (Name genau so schreiben).")
     # Die Anfrage geht als Text über die Standardeingabe, die Antwort kommt als Text zurück.
     try:
-        proc = subprocess.run([exe, "run", name, "--input-path", "-", "--output-path", "-",
-                               "--output-type", "public.plain-text"],
-                              input=prompt, capture_output=True, text=True, timeout=240)
+        proc = _run([exe, "run", name, "--input-path", "-", "--output-path", "-",
+                     "--output-type", "public.plain-text"], prompt, 240)
     except subprocess.TimeoutExpired:
         raise AIError("Apple Intelligence hat nicht rechtzeitig geantwortet. Im Kurzbefehl prüfen, "
                       "dass keine Aktion mehr nachfragt (z. B. „Nach Text fragen“ gelöscht?).")

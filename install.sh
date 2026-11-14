@@ -84,7 +84,9 @@ install_python_mac() {
   echo "Lade Python $v …"
   curl -fL --progress-bar -o "$pkg" "$url" || { echo "Download fehlgeschlagen."; return 1; }
   # Nur ein von der Python Software Foundation signiertes Paket installieren
-  if ! pkgutil --check-signature "$pkg" 2>/dev/null | grep -q "Python Software Foundation"; then
+  local sig
+  if ! sig="$(pkgutil --check-signature "$pkg" 2>/dev/null)" \
+     || ! printf '%s\n' "$sig" | grep -q "Developer ID Installer: Python Software Foundation"; then
     echo "Die Signatur des Pakets ist nicht in Ordnung – Abbruch."
     rm -f "$pkg"; return 1
   fi
@@ -128,12 +130,21 @@ VER="$("$PY" -c 'from app import VERSION; print(VERSION)')"
 # ------------------------------------------------------------ 2. Programm kopieren
 progress "Programm installieren (Version $VER)"
 # Läuft die App gerade, wird sie beendet – sie startet danach in der neuen Version.
-"$PY" - "$PORT" <<'EOF' || true
+if [ "$OS" = "Darwin" ]; then
+  CONFIG="$HOME/Library/Application Support/StueckDerWoche"
+else
+  CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/stueck-der-woche"
+fi
+"$PY" - "$PORT" "$CONFIG/zugang" <<'EOF' || true
 import sys, urllib.request
-port = sys.argv[1]
+port, key_file = sys.argv[1], sys.argv[2]
+headers = {"X-App": "1", "Content-Type": "application/json"}
+try:  # Zugangsschlüssel der laufenden App (nur für den eigenen Benutzer lesbar)
+    headers["X-App-Key"] = open(key_file, encoding="utf-8").read().strip()
+except OSError:
+    pass
 try:
-    req = urllib.request.Request(f"http://127.0.0.1:{port}/api/quit", data=b"{}", method="POST",
-                                 headers={"X-App": "1", "Content-Type": "application/json"})
+    req = urllib.request.Request(f"http://127.0.0.1:{port}/api/quit", data=b"{}", method="POST", headers=headers)
     urllib.request.urlopen(req, timeout=2).read()
     print("Die laufende App wurde beendet.")
 except Exception:
@@ -230,6 +241,8 @@ if [ "$OS" = "Darwin" ]; then
   cp "$SRC/paket/mac/StueckDerWoche" "$APP/Contents/MacOS/StueckDerWoche"
   chmod +x "$APP/Contents/MacOS/StueckDerWoche"
 
+  # macOS erlaubt hier höchstens drei Zahlen (wie paket/mac/build_dmg.py): 0.6.1.2 → 0.6.1002
+  BUNDLE_VER="$("$PY" -c 'import re, sys; n = ([int(x) for x in re.findall(r"\d+", sys.argv[1])] + [0, 0, 0, 0])[:4]; print(f"{n[0]}.{n[1]}.{n[2] * 1000 + n[3]}")' "$VER")"
   cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -241,7 +254,7 @@ if [ "$OS" = "Darwin" ]; then
   <key>CFBundleIconFile</key><string>StueckDerWoche</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VER</string>
-  <key>CFBundleVersion</key><string>$VER</string>
+  <key>CFBundleVersion</key><string>$BUNDLE_VER</string>
   <key>LSMinimumSystemVersion</key><string>11.0</string>
   <key>LSUIElement</key><true/>
 </dict></plist>

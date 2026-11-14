@@ -3,7 +3,7 @@
 Erstellt Übersichtsblätter (DIN A5) für den Musikunterricht: Titel, Angaben,
 Porträt, Infotext sowie Codes für YouTube, Spotify und Apple Music.
 
-Stand: **Version 0.6.1.2** – alle Etappen fertig: Editor, Live-Vorschau, Speichern,
+Stand: **Version 0.6.9** – alle Etappen fertig: Editor, Live-Vorschau, Speichern,
 PDF-Export, Angaben und Porträts aus Wikipedia/Wikidata/Commons, Aufnahmen von
 YouTube, Spotify und Apple Music, Infotext-Vorschläge per KI (Claude-Abo,
 Claude-API oder andere – auch kostenlose – Dienste), Schriften und Gestaltung
@@ -30,7 +30,7 @@ Für den automatischen PDF-Export nutzt sie einen unsichtbaren Chromium:
 
 ### macOS – mit dem Installationsabbild (ohne Terminal)
 
-1. **„Stueck-der-Woche-0.6.1.2.dmg“** (unter github.com/BeaverMusic/stueck-der-woche → Releases) doppelklicken. Es öffnet sich ein Fenster mit
+1. **„Stueck-der-Woche-0.6.9.dmg“** (unter github.com/BeaverMusic/stueck-der-woche → Releases) doppelklicken. Es öffnet sich ein Fenster mit
    der App, einer Verknüpfung „Programme“ und einer kurzen Anleitung.
 2. **„Stück der Woche“ doppelklicken.** Die App bietet an, sich selbst in den
    Ordner „Programme“ zu kopieren, und startet danach von dort.
@@ -144,18 +144,27 @@ Ruhezustand des Rechners und ein geschlossenes Terminal-Fenster beenden sie nich
 Sollte die Verbindung trotzdem einmal abreißen, zeigt die App das oben an –
 dann die App neu starten; die Seite speichert offene Änderungen danach nach.
 
+Die App arbeitet nur mit dem Fenster zusammen, das sie selbst geöffnet hat
+(siehe „Sicherheit“ unter den Hinweisen). Wer ihre Adresse von Hand in den
+Browser eintippt oder ein altes Lesezeichen benutzt, sieht deshalb nur den
+Hinweis „Dieses Fenster ist nicht mit der App verbunden“ – dann die App
+einfach über ihr Symbol öffnen.
+
 Als Tab im normalen Browser geht es auch: `stueck-der-woche --browser`
 (oder ohne Installation im entpackten Ordner: `./start.sh --browser`).
 
 ## Bedienung in Kürze
 
 - **+ Neues Blatt** → Typ wählen (Klassik, Pop/Rock, Jazz, Sonstiges oder ein
-  eigener). Der Typ legt die vorgeschlagenen Felder und die Farbe fest. Mit dem
-  kleinen **+** legst du einen eigenen Typ an (Name und Farbe, z. B. „Filmmusik“);
-  er bleibt dauerhaft und erscheint auch im Filter links. **Jeder** Typ – auch
-  Klassik, Pop/Rock, Jazz und Sonstiges – lässt sich ändern: Klick auf den
-  farbigen Punkt ändert Name und Farbe („Standard“ stellt die Werkseinstellung
-  wieder her). Das × entfernt einen Typ; eingebaute Typen werden dabei nur
+  eigener). Der Typ legt die vorgeschlagenen Angaben und die Farbe fest. Mit dem
+  kleinen **+** legst du einen eigenen Typ an (z. B. „Filmmusik“): Name, Farbe
+  und – unter „Angaben auf neuen Blättern“ – welche Angaben neue Blätter dieses
+  Typs bekommen (z. B. Komponist, Film, Jahr) und ob die Suche sich wie bei
+  Klassik, Pop/Rock oder Jazz verhalten soll. Der Typ bleibt dauerhaft und
+  erscheint auch im Filter links. **Jeder** Typ – auch Klassik, Pop/Rock, Jazz
+  und Sonstiges – lässt sich ändern: Klick auf den farbigen Punkt ändert Name,
+  Farbe und Angaben („Standard“ stellt die Werkseinstellung wieder her).
+  Geänderte Angaben gelten für neue Blätter; bestehende bleiben, wie sie sind. Das × entfernt einen Typ; eingebaute Typen werden dabei nur
   ausgeblendet und lassen sich mit „Ausgeblendete Typen wiederherstellen“
   zurückholen. Die Blätter bleiben in jedem Fall erhalten.
 - **Automatisch ausfüllen:** Stück, Person oder Band eingeben (z. B.
@@ -188,11 +197,19 @@ Als Tab im normalen Browser geht es auch: `stueck-der-woche --browser`
   ersetzt deinen Text. Ein Wunsch im Feld daneben (z. B. „einfacher für
   Klasse 5“, „mehr zur Wirkung“) überarbeitet den vorhandenen Text.
   Aussagen, bei denen die KI unsicher ist, stehen unter **„Bitte prüfen“** –
-  nur im Editor, nie auf dem Blatt.
+  nur im Editor, nie auf dem Blatt. Dauert es zu lange, bricht „Abbrechen“
+  die Anfrage ab.
 - **Bild fehlt?** Die App sucht automatisch bei weiteren beteiligten
   Personen und per Namenssuche. Unter „Bild“ gibt es außerdem
   „Auf Commons suchen …“ für eine eigene Suche.
-- Alles wird **automatisch gespeichert** (zusätzlich: Strg/Cmd + S).
+- Alles wird **automatisch gespeichert** (zusätzlich: Strg/Cmd + S) – auch die
+  letzte Änderung, wenn du das Fenster gleich danach schließt.
+- **Liste links:** Unter dem Filter legst du fest, wonach sortiert wird
+  (zuletzt bearbeitet, zuletzt angelegt oder Titel A–Z); rechts in jeder Zeile
+  steht das Datum.
+- **Löschen** verschiebt ein Blatt in den **Papierkorb** (unten links). Dort
+  lässt es sich wiederherstellen oder endgültig löschen; direkt nach dem
+  Löschen genügt „Rückgängig“ in der Meldung.
 - **Angaben:** Bezeichnung und Inhalt frei änderbar. Zum Sortieren am
   Griff ☰ links ziehen (oder den Griff anklicken und mit den Pfeiltasten
   verschieben). „breit“ = über die ganze Breite, „zeigen“ = auf dem Blatt
@@ -211,9 +228,12 @@ Als Tab im normalen Browser geht es auch: `stueck-der-woche --browser`
   **↺ Zurücksetzen** stellt Ausschnitt und Vergrößerung wieder auf die
   Ausgangswerte.
 - **Links:** Link einfügen – der Code entsteht automatisch.
-  Der Spotify-Code wird bei Spotify abgerufen und braucht Internet.
+  Der Spotify-Code wird bei Spotify abgerufen und braucht Internet. Ist er
+  einmal nicht abrufbar, erstellt die App ersatzweise einen QR-Code zum
+  selben Ziel und sagt das dazu.
 - Wird das Blatt zu voll, erscheint über der Vorschau ein Hinweis.
-- **PDF digital (A5):** ein Blatt pro PDF, zum Verteilen.
+- **PDF digital (A5):** ein Blatt pro PDF, zum Verteilen. Gibt es die
+  PDF-Datei schon, fragt die App: ersetzen oder beide behalten.
 - **PDF zum Drucken (A4):** zwei A5-Blätter nebeneinander auf A4 quer, mit
   Schnittlinie – dasselbe Blatt zweimal oder zwei verschiedene.
 - **Drucken …:** öffnet den Druckdialog des Browsers (A4 mit zwei Blättern
@@ -369,8 +389,8 @@ Standardmäßig in `Dokumente/Stück der Woche/`:
 
 - `blaetter/` – ein Ordner pro Blatt (Angaben und Bild)
 - `PDF/` – die exportierten PDFs
-- `papierkorb/` – gelöschte Blätter (zum Wiederherstellen zurück nach
-  `blaetter/` verschieben)
+- `papierkorb/` – gelöschte Blätter (Wiederherstellen und endgültiges
+  Löschen in der App über „Papierkorb“ unten links)
 
 Zum Sichern einfach diesen Ordner kopieren.
 
@@ -378,9 +398,11 @@ Zum Sichern einfach diesen Ordner kopieren.
 
 Das Zahnrad oben rechts öffnet die Einstellungen mit sechs Reitern:
 
-- **Allgemein:** Kopfzeile (z. B. „Musik · Name“), Ordner für Blätter und PDFs –
-  jeweils mit **Auswählen …** (öffnet den Finder bzw. Dateimanager) und
-  **Öffnen** –, ggf. Pfad zum Browser
+- **Allgemein:** Kopfzeile (z. B. „Musik · Name“), Erscheinungsbild der App
+  (hell, dunkel oder wie das System – die Blätter bleiben immer weiß), Ordner
+  für Blätter und PDFs – jeweils mit **Auswählen …** (öffnet den Finder bzw.
+  Dateimanager) und **Öffnen** –, ggf. Pfad zum Browser, Chromium für den
+  PDF-Export laden bzw. aktualisieren
 - **Blatt & Schrift:** Schriften für Titel, Angaben und Infotext sowie die
   Schriftgrößen (in Punkt) für alle Blätter, mit Live-Vorschau und
   „Standard wiederherstellen“. Zur Wahl stehen u. a. gut lesbare Schriften
@@ -416,23 +438,36 @@ mitschicken, dann lässt sich der Fehler genau finden.
   auftreten: im Finder unter „Programme → Python 3.x“ einmal
   „Install Certificates.command“ doppelklicken.
 
-- Die Schriften werden bei Google Fonts geladen (dabei sieht Google, wie bei
-  jeder Webseite, deine IP-Adresse). Ohne Internet wird eine Ersatzschrift
-  verwendet. Wer das vermeiden möchte, wählt unter „Blatt & Schrift“ die
-  Systemschriften Georgia und Helvetica/Arial.
+- **Schriften:** Alle wählbaren Schriften liegen der App bei. Es wird dafür
+  nichts aus dem Internet geladen; Vorschau und PDF sehen auch ohne
+  Verbindung gleich aus.
 - **Sicherheit:** Die App läuft nur auf deinem Rechner; der eingebaute Server
-  ist von außen nicht erreichbar und beantwortet nur Anfragen der App selbst
-  (Webseiten im Internet können ihn nicht fernsteuern). Die Oberfläche darf
+  ist von außen nicht erreichbar. Er beantwortet nur Anfragen des Fensters,
+  das die App selbst geöffnet hat: Beim Start erzeugt sie einen zufälligen
+  Zugangsschlüssel, gibt ihn nur diesem Fenster mit und legt ihn in einer
+  Datei ab, die allein dein Benutzer lesen darf. Andere Programme und andere
+  Benutzer desselben Rechners kommen so nicht an Blätter, Einstellungen und
+  API-Schlüssel; Webseiten im Internet ohnehin nicht. Die Oberfläche darf
   nur eigene Programmteile ausführen; Codes (SVG) und Bilder werden vor dem
   Speichern geprüft. Die Einstellungsdatei mit den API-Schlüsseln ist nur für
   deinen Benutzer lesbar, und im Fehlerprotokoll werden Schlüssel unkenntlich
-  gemacht. Die Schlüssel werden nur an den jeweiligen Dienst gesendet.
+  gemacht. Die Schlüssel werden nur an den jeweiligen Dienst gesendet, und
+  zwar verschlüsselt (https); die Kontakt-E-Mail für Wikipedia geht nur an
+  die Wikimedia-Dienste.
 - Der heruntergeladene Chromium liegt unter
   `~/.config/stueck-der-woche/chromium` (Linux) bzw.
   `~/Library/Application Support/StueckDerWoche/chromium` (macOS).
-  Zum Entfernen einfach diesen Ordner löschen.
+  Die App schaut alle zwei Monate nach einer neueren Version und erneuert ihn
+  (nur wenn die automatische Update-Suche eingeschaltet ist); von Hand geht es
+  unter Einstellungen → Allgemein. Zum Entfernen einfach diesen Ordner löschen.
+- **Zwischenspeicher:** Abfragen bei Wikipedia, den Musikdiensten und der
+  Übersetzung werden zwischengespeichert; alte Einträge räumt die App beim
+  Start selbst weg.
 
 ## Lizenz
 
 Stück der Woche steht unter der European Union Public Licence (EUPL) v. 1.2,
 siehe Datei `LICENSE`. Copyright © 2026 BeaverMusic.
+
+Die mitgelieferten Schriften (Ordner `web/fonts`) stehen unter der SIL Open
+Font License 1.1; die Urheber stehen in `web/fonts/LIZENZ.txt`.
