@@ -26,14 +26,6 @@ Installierte Apps melden neue Versionen selbst und spielen sie auf Wunsch ein.
   (keine Abfrage bei Google Fonts).
 - Ausführliche Anleitung: [LIESMICH.md](LIESMICH.md) · Änderungen: [NEUERUNGEN.md](NEUERUNGEN.md)
 
-## Neue Version veröffentlichen
-
-1. Versionsnummer in `app/__init__.py` und `web/app.js` (`APP_VERSION`) erhöhen und
-   einen Eintrag in `NEUERUNGEN.md` ergänzen.
-2. Auf GitHub **Actions → „Veröffentlichung“ → „Run workflow“** klicken. Nach etwa
-   drei Minuten liegen .dmg, ZIP und Prüfsummen unter „Releases“ – und alle
-   installierten Apps bieten das Update an.
-
 ## Lizenz
 
 Copyright © 2026 BeaverMusic
