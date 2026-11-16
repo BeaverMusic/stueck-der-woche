@@ -143,8 +143,11 @@ def find_claude() -> str | None:
     if found:
         return found
     home = Path.home()
-    for p in [home / ".local/bin/claude", home / ".claude/local/claude", Path("/opt/homebrew/bin/claude"),
-              Path("/usr/local/bin/claude"), Path("/usr/bin/claude"), home / ".npm-global/bin/claude"]:
+    candidates = [home / ".local/bin/claude", home / ".claude/local/claude", Path("/opt/homebrew/bin/claude"),
+                  Path("/usr/local/bin/claude"), Path("/usr/bin/claude"), home / ".npm-global/bin/claude"]
+    if sys.platform == "win32":
+        candidates = [home / ".local" / "bin" / "claude.exe"]
+    for p in candidates:
         if p.is_file():
             return str(p)
     return None
