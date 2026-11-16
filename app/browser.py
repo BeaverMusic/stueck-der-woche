@@ -35,6 +35,13 @@ LINUX_CMDS = [
     "brave", "brave-browser", "microsoft-edge-stable", "microsoft-edge",
     "vivaldi-stable", "vivaldi",
 ]
+WIN_APPS = [
+    r"Google\Chrome\Application\chrome.exe",
+    r"Microsoft\Edge\Application\msedge.exe",
+    r"BraveSoftware\Brave-Browser\Application\brave.exe",
+    r"Chromium\Application\chrome.exe",
+    r"Vivaldi\Application\vivaldi.exe",
+]
 
 NO_PDF_ENGINE = (
     "Für den PDF-Export fehlt Chromium. Unter Einstellungen → Allgemein "
@@ -60,6 +67,17 @@ def find_browser() -> str | None:
     custom = _custom()
     if custom and chromium.EXE_NAME not in Path(custom).name:
         return custom
+    if sys.platform == "win32":
+        names = ("PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA")
+        for name in names:
+            base = os.environ.get(name)
+            if not base:
+                continue
+            for app in WIN_APPS:
+                p = Path(base) / app
+                if p.is_file():
+                    return str(p)
+        return None
     if sys.platform == "darwin":
         for base in ("/Applications", str(Path.home() / "Applications")):
             for app in MAC_APPS:
