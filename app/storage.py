@@ -64,6 +64,9 @@ def config_dir() -> Path:
         return Path(override)
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support" / "StueckDerWoche"
+    if sys.platform == "win32":
+        base = os.environ.get("APPDATA") or str(Path.home() / "AppData" / "Roaming")
+        return Path(base) / "StueckDerWoche"
     base = os.environ.get("XDG_CONFIG_HOME") or str(Path.home() / ".config")
     return Path(base) / "stueck-der-woche"
 
