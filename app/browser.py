@@ -10,7 +10,10 @@ falls vorhanden, ein installierter Chromium-Browser.
 from __future__ import annotations
 
 import base64
-import fcntl
+try:
+    import fcntl
+except ImportError:
+    fcntl = None  # Windows hat kein fcntl
 import json
 import os
 import select
