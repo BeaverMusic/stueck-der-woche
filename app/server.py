@@ -20,7 +20,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
-from . import VERSION, ai, browser, chromium, codes, media, pdf_export, picker, storage, update, wiki, zugang
+from . import VERSION, ai, browser, certs, chromium, codes, media, pdf_export, picker, storage, update, wiki, zugang
 
 # Lebenszeichen der geöffneten Oberfläche (zum automatischen Beenden)
 activity = {"last": time.time(), "bye": None, "seen": False, "quit": False, "own_window": False}

@@ -70,7 +70,7 @@ def _windows(config_dir: Path) -> None:
     (cacert.pem) vertrauen. Windows lädt fehlende Stammzertifikate nur für eigene
     Programme nach – Python sieht sie dann nicht (z. B. bei accounts.spotify.com)."""
     path = config_dir / "cacert.pem"
-    if not path.exists():
+    if not path.is_file():
         return
 
     def context(purpose=ssl.Purpose.SERVER_AUTH, *, cafile=None, capath=None, cadata=None):
