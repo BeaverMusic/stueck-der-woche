@@ -20,6 +20,7 @@ KEYCHAINS = [
     "/Library/Keychains/System.keychain",  # z. B. vom Schulnetz installierte Zertifikate
 ]
 REFRESH_DAYS = 30
+CACERT_URL = "https://curl.se/ca/cacert.pem"
 
 
 def _python_has_certs() -> bool:
@@ -63,8 +64,6 @@ def _from_keychains(target: Path) -> str | None:
     tmp.replace(target)
     return str(target)
 
-    tmp.replace(target)
-    return str(target)
 
 def _windows(config_dir: Path) -> None:
     """Windows: zusätzlich zum Zertifikatspeicher von Windows der Mozilla-Liste
@@ -86,6 +85,27 @@ def _windows(config_dir: Path) -> None:
         urllib.request._opener = None
     except Exception:
         pass
+
+
+def refresh_windows(config_dir: Path) -> bool:
+    """Windows: Lädt die Mozilla-Liste neu, wenn sie fehlt oder älter als REFRESH_DAYS
+    Tage ist. Gibt True zurück, wenn eine neue Liste geladen wurde."""
+    if sys.platform != "win32":
+        return False
+    target = config_dir / "cacert.pem"
+    if target.is_file() and time.time() - target.stat().st_mtime < REFRESH_DAYS * 86400:
+        return False  # noch frisch genug
+    import urllib.request
+    with urllib.request.urlopen(CACERT_URL, timeout=30) as resp:
+        data = resp.read(2_000_000)
+    if data.count(b"BEGIN CERTIFICATE") < 100:
+        raise RuntimeError("Die heruntergeladene Zertifikatsliste sieht nicht richtig aus.")
+    tmp = target.with_suffix(".tmp")
+    tmp.write_bytes(data)
+    tmp.replace(target)
+    _windows(config_dir)  # neue Liste sofort benutzen
+    return True
+
 
 def install(config_dir: Path) -> None:
     """Sorgt dafür, dass Python Zertifikate findet (nur nötig, wenn keine da sind)."""

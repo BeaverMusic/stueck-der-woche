@@ -397,3 +397,8 @@ def housekeeping() -> None:
                 storage.log("Chromium", f"aktualisiert: {before} → {after}")
     except Exception as exc:
         storage.log("Chromium", f"Aktualisierung nicht möglich: {exc}")
+    try:
+        if certs.refresh_windows(storage.config_dir()):
+            storage.log("Zertifikate", "Mozilla-Liste aktualisiert")
+    except Exception as exc:
+        storage.log("Zertifikate", f"Aktualisierung nicht möglich: {exc}")
