@@ -63,9 +63,35 @@ def _from_keychains(target: Path) -> str | None:
     tmp.replace(target)
     return str(target)
 
+    tmp.replace(target)
+    return str(target)
+
+def _windows(config_dir: Path) -> None:
+    """Windows: zusätzlich zum Zertifikatspeicher von Windows der Mozilla-Liste
+    (cacert.pem) vertrauen. Windows lädt fehlende Stammzertifikate nur für eigene
+    Programme nach – Python sieht sie dann nicht (z. B. bei accounts.spotify.com)."""
+    path = config_dir / "cacert.pem"
+    if not path.exists():
+        return
+
+    def context(purpose=ssl.Purpose.SERVER_AUTH, *, cafile=None, capath=None, cadata=None):
+        ctx = ssl.create_default_context(purpose, cafile=cafile, capath=capath, cadata=cadata)
+        if not (cafile or capath or cadata):
+            ctx.load_verify_locations(cafile=str(path))
+        return ctx
+
+    ssl._create_default_https_context = context
+    try:  # urllib merkt sich seine Einstellungen nach der ersten Verbindung
+        import urllib.request
+        urllib.request._opener = None
+    except Exception:
+        pass
 
 def install(config_dir: Path) -> None:
     """Sorgt dafür, dass Python Zertifikate findet (nur nötig, wenn keine da sind)."""
+    if sys.platform == "win32" and not os.environ.get("SSL_CERT_FILE"):
+        _windows(config_dir)
+        return
     if sys.platform != "darwin" or os.environ.get("SSL_CERT_FILE") or _python_has_certs():
         return
     path = _from_certifi()
