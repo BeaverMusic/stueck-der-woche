@@ -604,5 +604,7 @@ def open_folder(path: Path) -> None:
         raise ValueError("Ordner nicht gefunden")
     if sys.platform == "darwin":
         subprocess.Popen(["open", str(path)])
+    elif sys.platform == "win32":
+        os.startfile(str(path))
     else:
         subprocess.Popen(["xdg-open", str(path)])
